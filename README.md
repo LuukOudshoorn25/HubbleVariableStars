@@ -1,5 +1,6 @@
 # HubbleVariableStars
 Here will be code on analyzing the Ha variability of PMS stellar objects in the Tarantula Nebula / 30-dor
+
 The calibrate_wfc3.py script contains functions to 
     1. Sort Hubble downloaded images into tree structure (filter -> deep/short)
     2. AstroDrizzle the single science images onto a common WCS header (defined by template.fits, made in earlier analysis)
