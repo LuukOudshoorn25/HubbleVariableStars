@@ -42,7 +42,7 @@ DO_REGRID4_PAR = False
 DO_APPHOT      = False
 DO_APPHOT4     = False
 write_DS9_reg  = False
-DO_IRAF_DF     = False
+DO_IRAF_DF     = True
 ### Function definitions ###
 def initialize():
     return
@@ -594,7 +594,7 @@ if DO_APPHOT:
 
     # Check which files are already done
 
-    drizzled_apphot_flist        = glob('../IRAF_cat*/*/*/*.phot')
+    drizzled_apphot_flist        = glob('../IRAF_cats/*/*/*.phot')
 
 
     not_done_arr = ([(w[:-5]+'.phot').replace('DRIZZLED', 'IRAF_cats') not in 
