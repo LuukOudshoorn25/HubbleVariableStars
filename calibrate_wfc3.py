@@ -636,40 +636,6 @@ if DO_APPHOT:
     os.chdir('../')
         
 
-
-    """# Step 2: define input filelist
-    os.system('rm -rf ./working_dir/*')
-    with open('./working_dir/flist_in.txt', 'w') as flist_in:
-        for im in drizzled_astrom_regrid_flist:
-            flist_in.write(im+'\n')
-    # Step 1: define output filelist
-    with open('./working_dir/flist_out.txt', 'w') as flist_out:
-        for im in drizzled_astrom_regrid_flist:
-            root       = im.split('/')[-1]
-            target_dir = '/'.join(im.split('/')[:-1])+'/'
-            if DO_APPHOT4:
-                target_dir = target_dir.replace('./MultiDrizzle/', './IRAF_cats_drz/')
-            else:
-                target_dir = target_dir.replace('./DRIZZLED/', './IRAF_cats/')
-            if not os.path.exists(target_dir):
-                mkdir(target_dir)#os.makedirs(path)
-            target_dir = target_dir +root[:-5]+'.phot'
-            flist_out.write(target_dir+'\n')
-    flist_in.close()
-    flist_out.close()
-
-    # Files created. Mow produce script for IRAF
-    with open('./working_dir/app_phot_script.cl', 'w') as iraf_script:
-        iraf_script.write('digiphot.apphot.phot image=@./working_dir/flist_in.txt ')
-        iraf_script.write('coords=all_stars_xy_coords.coo output=@./working_dir/flist_out.txt ')
-        iraf_script.write('salgori=mode annulus=4 dannulus=3 apertur=3 zmag=0 interac=no verify=yes ')
-        iraf_script.write('calgori=centroid cbox=6 datamin=INDEF datamax=INDEF ')
-        iraf_script.write('gain=CCDGAIN readnoi=3.05 sigma=0.00446819')
-        iraf_script.close()
-    ### NOTE: ALL SET BUT IRAF needs to be started by hand now ###  
-"""
-
-
 if write_DS9_reg:
     write_ds9_regions()
 
