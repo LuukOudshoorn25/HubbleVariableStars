@@ -19,3 +19,4 @@ The calibrate_wfc3.py script contains functions to
     
     7. Concat all the single IRAF phot files to make one huge catalogue of magnitudes. 
 
+Other files include analysis scripts to look at the IRAF catalogues and see whether we have detected any Ha variable stars. The project is currently running so far from finalized. 
