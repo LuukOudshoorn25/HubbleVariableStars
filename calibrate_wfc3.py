@@ -42,7 +42,7 @@ DO_REGRID4_PAR = False
 DO_APPHOT      = False
 DO_APPHOT4     = False
 write_DS9_reg  = False
-DO_IRAF_DF     = True
+DO_IRAF_DF     = False
 ### Function definitions ###
 def initialize():
     return
@@ -277,7 +277,50 @@ def regrid_worker(im):
         print("Write done")
         print("Took ", (time.time()-start_time), " sec")
 
+def GetCRMasked_exptime(flist, this_file, folderpath, exptime):
+    storepath_median = folderpath + 'median.fits'
+    if os.path.exists(storepath_median):
+        medians       = fits.open(storepath_median)[0].data
+    if os.path.exists('../stddevs.txt'):
+        stddevs_df = pd.read_csv('../stddevs.txt', delimiter='\t')
+        stddevs_df.columns = ['folder', 'stddev']
+        stddev = float(stddevs_df.groupby('folder').median().loc[folderpath])
+    else:
+        print('Could not find stddevs.txt, now calculating')
+        # Load all data    
+        flist = flist[:14]
+        all_frames = np.zeros((*this_file.shape, len(flist)))
+        for i,file in enumerate(flist):
+            all_frames[:,:,i] = fits.open(file)[0].data
+        medians = np.nanmedian(all_frames, axis=2)  
+        del all_frames      
+    # Get Background STDDEV
+    if not os.path.exists('../stddevs.txt'):
+        regA = this_file[this_file.shape[0]-2555:this_file.shape[0]-2525,this_file.shape[1]-2607:this_file.shape[1]-2570]
+        stddev1 = np.nanstd(regA[regA<np.nanmedian(regA)])
+        regB = this_file[this_file.shape[0]-965:this_file.shape[0]-923,this_file.shape[1]-1271:this_file.shape[1]-1225]
+        stddev2 = np.nanstd(regB[regB<np.nanmedian(regB)])
+        regC = this_file[this_file.shape[0]-757:this_file.shape[0]-729,this_file.shape[1]-1860:this_file.shape[1]-1812]
+        stddev3 = np.nanstd(regC[regC<np.nanmedian(regC)])
+        regD = this_file[this_file.shape[0]-507:this_file.shape[0]-445,this_file.shape[1]-3964:this_file.shape[1]-3883]
+        stddev4 = np.nanstd(regD[regD<np.nanmedian(regD)])
 
+        stddev = np.nanmedian(np.sort(np.array([stddev1, stddev2, stddev3, stddev4]))[:-1])
+    print("Bg stddev: ",stddev)
+    bg_stddev_arr = stddev * medians / np.nanmedian(this_file)
+    if not os.path.exists(storepath_median):
+        fits.writeto(storepath_median, medians, overwrite=True)
+    #fits.writeto(storepath_stddev, bg_stddev_arr, overwrite=True)
+    offsets = np.abs(this_file - medians)
+    CRmask = np.where(offsets>10*bg_stddev_arr, True, False)
+    this_file_corr = this_file.copy()
+    this_file_corr *= exptime
+    this_file_corr[CRmask] = -1
+
+    with open('../stddevs.txt', 'a+') as stddev_list:
+        stddev_list.write(folderpath + '\t'+str(stddev)+'\n')
+
+    return this_file_corr, stddev*exptime
 ### SORT ALL FILES ACCORDING TO FILTER AND EXPOSURE LENGTH ###
 if SORT:
     sort_files()
@@ -535,50 +578,7 @@ if DO_REFERENCE:
 
 ### START APERTURE PHOTOMETRY USING IRAF ###
 
-def GetCRMasked_exptime(flist, this_file, folderpath, exptime):
-    storepath_median = folderpath + 'median.fits'
-    if os.path.exists(storepath_median):
-        medians       = fits.open(storepath_median)[0].data
-    if os.path.exists('../stddevs.txt'):
-        stddevs_df = pd.read_csv('../stddevs.txt', delimiter='\t')
-        stddevs_df.columns = ['folder', 'stddev']
-        stddev = float(stddevs_df.groupby('folder').median().loc[folderpath])
-    else:
-        print('Could not find stddevs.txt, now calculating')
-        # Load all data    
-        flist = flist[:14]
-        all_frames = np.zeros((*this_file.shape, len(flist)))
-        for i,file in enumerate(flist):
-            all_frames[:,:,i] = fits.open(file)[0].data
-        medians = np.nanmedian(all_frames, axis=2)  
-        del all_frames      
-    # Get Background STDDEV
-    if not os.path.exists('../stddevs.txt'):
-        regA = this_file[this_file.shape[0]-2555:this_file.shape[0]-2525,this_file.shape[1]-2607:this_file.shape[1]-2570]
-        stddev1 = np.nanstd(regA[regA<np.nanmedian(regA)])
-        regB = this_file[this_file.shape[0]-965:this_file.shape[0]-923,this_file.shape[1]-1271:this_file.shape[1]-1225]
-        stddev2 = np.nanstd(regB[regB<np.nanmedian(regB)])
-        regC = this_file[this_file.shape[0]-757:this_file.shape[0]-729,this_file.shape[1]-1860:this_file.shape[1]-1812]
-        stddev3 = np.nanstd(regC[regC<np.nanmedian(regC)])
-        regD = this_file[this_file.shape[0]-507:this_file.shape[0]-445,this_file.shape[1]-3964:this_file.shape[1]-3883]
-        stddev4 = np.nanstd(regD[regD<np.nanmedian(regD)])
 
-        stddev = np.nanmedian(np.sort(np.array([stddev1, stddev2, stddev3, stddev4]))[:-1])
-    print("Bg stddev: ",stddev)
-    bg_stddev_arr = stddev * medians / np.nanmedian(this_file)
-    if not os.path.exists(storepath_median):
-        fits.writeto(storepath_median, medians, overwrite=True)
-    #fits.writeto(storepath_stddev, bg_stddev_arr, overwrite=True)
-    offsets = np.abs(this_file - medians)
-    CRmask = np.where(offsets>10*bg_stddev_arr, True, False)
-    this_file_corr = this_file.copy()
-    this_file_corr *= exptime
-    this_file_corr[CRmask] = -1
-
-    with open('../stddevs.txt', 'a+') as stddev_list:
-        stddev_list.write(folderpath + '\t'+str(stddev)+'\n')
-
-    return this_file_corr, stddev*exptime
 
 
 if DO_APPHOT:
