@@ -44,6 +44,7 @@ DO_GET_NBadPIX = True
 DO_APPHOT4     = False
 write_DS9_reg  = False
 DO_IRAF_DF     = False
+DO_IRAF_NCR_DF = True
 ### Function definitions ###
 def initialize():
     return
@@ -692,47 +693,57 @@ if write_DS9_reg:
     write_ds9_regions()
 
 
-if DO_IRAF_DF: 
+if DO_IRAF_DF or DO_IRAF_NCR_DF: 
     """Concatenate all IRAF photometry catalogues into one CSV"""
+    """First do this for the photometry catalogues"""
     # Get the filelists for all catalogs
-    apphot_files = glob('./IRAF_cats/*/*/*.phot')
-    # See what columns we need to store
-    columns = ascii.read(apphot_files[0]).to_pandas().columns
-    # Create DF with 5 indexes
-    IRAF_df = pd.DataFrame({'ID':[], 'Filter':[], 'T_Start':[],'Exp_Length':[], 'DrizzleType':[]})
-    IRAF_df = IRAF_df.set_index(['ID', 'Filter', 'T_Start', 'Exp_Length', 'DrizzleType'])
-    # Add the columns that we fill later
-    for col in [w for w in columns if w is not 'ID']:
-        IRAF_df[col] = []
-    # Loop over the photometry files
-    for f_count, apphot_file in enumerate(apphot_files):
-        splitted_dir = apphot_file.split('/')
-        # Extract relevant info for the indexing
-        # Due to structure of directories, most info is in the filepath
-        drizzle_type = ('SingleDrizzle' if splitted_dir[1] == 'IRAF_cats' else 'MultiDrizzle')
-        exp_length   = splitted_dir[3]
-        hst_filter   = splitted_dir[2]
-        if drizzle_type=='SingleDrizzle':
-            fname        = splitted_dir[4].split('_')[0]
-            # Lookup associated FITS file
-            hdul         = fits.open(glob('./DRIZZLED/*/*/*'+fname+'*')[0])
-            # Extract info from its header
-            t_start      = hdul[0].header['EXPSTART']
-            #obs_date     = hdul[0].header['DATE-OBS']
-        else:
-            t_start      = 'None'
-            obs_date     = 'None'
-#        print("Filter "  , hst_filter)
-#        print("Exposure ", fname)
-        print('Working on file {} of {}'.format(f_count, len(apphot_files)), end='\r')
-        # Read in the photometry file
-        phot_df = ascii.read(apphot_file).to_pandas()
-        # Add info to df
-        for col, val in zip(['Filter', 'T_Start', 'Exp_Length', 'DrizzleType'], [hst_filter, t_start, exp_length, drizzle_type]):
-            phot_df[col] = val
-        phot_df = phot_df.set_index(['ID', 'Filter', 'T_Start', 'Exp_Length', 'DrizzleType'])
-        IRAF_df = pd.concat((IRAF_df, phot_df), axis=0)
-    IRAF_df.sort_index().to_csv('APP_phot_all_exps.csv')
+    photometry_files  = glob('./IRAF_cats/*/*/*regrid.phot')
+    nbadpix_files = glob('./IRAF_cats/*/*/*nbadpix.phot')
+    output_fnames = ['APP_phot_all_exps.csv', 'NBadpix_all_exps.csv']
+    if DO_IRAF_DF and DO_IRAF_NCR_DF:
+        todo = [photometry_files,nbadpix_files]
+    elif DO_IRAF_DF and not DO_IRAF_NCR_DF:
+        todo = [photometry_files]
+    elif DO_IRAF_NCR_DF and not DO_IRAF_DF:
+        todo = [nbadpix_files]
+    for which, apphot_files in enumerate(todo):
+        # See what columns we need to store
+        columns = ascii.read(apphot_files[0]).to_pandas().columns
+        # Create DF with 5 indexes
+        IRAF_df = pd.DataFrame({'ID':[], 'Filter':[], 'T_Start':[],'Exp_Length':[], 'DrizzleType':[]})
+        IRAF_df = IRAF_df.set_index(['ID', 'Filter', 'T_Start', 'Exp_Length', 'DrizzleType'])
+        # Add the columns that we fill later
+        for col in [w for w in columns if w is not 'ID']:
+            IRAF_df[col] = []
+        # Loop over the photometry files
+        for f_count, apphot_file in enumerate(apphot_files):
+            splitted_dir = apphot_file.split('/')
+            # Extract relevant info for the indexing
+            # Due to structure of directories, most info is in the filepath
+            drizzle_type = ('SingleDrizzle' if splitted_dir[1] == 'IRAF_cats' else 'MultiDrizzle')
+            exp_length   = splitted_dir[3]
+            hst_filter   = splitted_dir[2]
+            if drizzle_type=='SingleDrizzle':
+                fname        = splitted_dir[4].split('_')[0]
+                # Lookup associated FITS file
+                hdul         = fits.open(glob('./DRIZZLED/*/*/*'+fname+'*')[0])
+                # Extract info from its header
+                t_start      = hdul[0].header['EXPSTART']
+                #obs_date     = hdul[0].header['DATE-OBS']
+            else:
+                t_start      = 'None'
+                obs_date     = 'None'
+    #        print("Filter "  , hst_filter)
+    #        print("Exposure ", fname)
+            print('Working on file {} of {}'.format(f_count, len(apphot_files)), end='\r')
+            # Read in the photometry file
+            phot_df = ascii.read(apphot_file).to_pandas()
+            # Add info to df
+            for col, val in zip(['Filter', 'T_Start', 'Exp_Length', 'DrizzleType'], [hst_filter, t_start, exp_length, drizzle_type]):
+                phot_df[col] = val
+            phot_df = phot_df.set_index(['ID', 'Filter', 'T_Start', 'Exp_Length', 'DrizzleType'])
+            IRAF_df = pd.concat((IRAF_df, phot_df), axis=0)
+        IRAF_df.sort_index().to_csv(output_fnames[which])
         
 
 print("Finished in ", time.time() - tstart)
