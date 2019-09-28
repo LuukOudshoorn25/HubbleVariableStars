@@ -594,7 +594,7 @@ if DO_APPHOT:
 
     # Check which files are already done
 
-    drizzled_apphot_flist        = glob('../IRAF_cats/*/*/*.phot')
+    drizzled_apphot_flist        = glob('../IRAF_cat*/*/*/*.phot')
 
 
     not_done_arr = ([(w[:-5]+'.phot').replace('DRIZZLED', 'IRAF_cats') not in 
@@ -642,7 +642,7 @@ if write_DS9_reg:
 
 if DO_IRAF_DF: 
     # Get the filelists for all catalogs
-    apphot_files = glob('./IRAF_cat*/*/*/*.phot')
+    apphot_files = glob('./IRAF_cats/*/*/*.phot')
     # See what columns we need to store
     columns = ascii.read(apphot_files[0]).to_pandas().columns
     # Create DF with 5 indexes
