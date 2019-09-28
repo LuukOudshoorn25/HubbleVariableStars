@@ -706,7 +706,11 @@ if DO_IRAF_DF or DO_IRAF_NCR_DF:
         todo = [photometry_files]
     elif DO_IRAF_NCR_DF and not DO_IRAF_DF:
         todo = [nbadpix_files]
-    for which, apphot_files in enumerate(todo):
+    for apphot_files in todo:
+        if apphot_files == photometry_files:
+            which = 0
+        elif apphot_files == nbadpix_files:
+            which = 1
         # See what columns we need to store
         columns = ascii.read(apphot_files[0]).to_pandas().columns
         # Create DF with 5 indexes
