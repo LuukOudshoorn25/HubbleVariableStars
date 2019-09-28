@@ -39,11 +39,11 @@ DO_REGRID      = False
 DO_REGRID_PAR  = False
 DO_REGRID4     = False	
 DO_REGRID4_PAR = False
-DO_APPHOT      = False
+DO_APPHOT      = True
 DO_GET_NBadPIX = True
 DO_APPHOT4     = False
 write_DS9_reg  = False
-DO_IRAF_DF     = True
+DO_IRAF_DF     = False
 ### Function definitions ###
 def initialize():
     return
@@ -321,7 +321,7 @@ def GetCRMasked_exptime(flist, this_file, folderpath, exptime):
     with open('../stddevs.txt', 'a+') as stddev_list:
         stddev_list.write(folderpath + '\t'+str(stddev)+'\n')
 
-    return this_file_corr, stddev*exptime, CRmask.astype(int)
+    return this_file_corr, stddev*exptime, CRmask
 ### SORT ALL FILES ACCORDING TO FILTER AND EXPOSURE LENGTH ###
 if SORT:
     sort_files()
@@ -613,12 +613,13 @@ if DO_APPHOT:
         im_exptime = im[:-5]+'_exptime.fits'
         im_crmask  = im[:-5]+'_crmask.fits'
         print('Working on file {} from {}'.format(f_count, len(drizzled_astrom_regrid_flist)), end='\r')     
-        if not os.path.exists(im_exptime) or not os.path.exists(im_crmask):
+        if not (os.path.exists(im_exptime) and os.path.exists(im_crmask)):
            # CR clean
             flist                    = glob(folder+'*drz_sci_regrid.fits')
             hdu.data, sigma, CRmask  = GetCRMasked_exptime(flist, hdu.data, folder, hdu.header['EXPTIME'])
             hdu.writeto(im_exptime, overwrite=True)
             # Save CRmask to FITS file
+            CRmask = CRmask.astype(type(hdu.data[555,555]))
             CR_hdu = hdu.copy()
             CR_hdu.data = CRmask
             CR_hdu.writeto(im_crmask, overwrite=True)
@@ -648,6 +649,7 @@ if DO_APPHOT:
 if DO_GET_NBadPIX:
     """Function to get the number of masked pixels inside the annulus IRAF used to do the photometry"""
     # For each file, read in the IRAF catalogue, use the (x,y) coordinates and write those to a new iraf command file
+    os.chdir('./working_dir')
     if DO_APPHOT4:
         drizzled_astrom_regrid_flist = glob('../MultiDrizzle/*/*/drz_sci*regrid.fits')
     else: 
@@ -678,7 +680,7 @@ if DO_GET_NBadPIX:
         im_exptime = im[:-5]+'_exptime.fits'
         iraf_script_nbadpix.write('digiphot.apphot.phot image='+im_crmask+' ')
         iraf_script_nbadpix.write('coords= '+coordlist_dir+' output='+target_dir)
-        iraf_script_nbadpix.write('salgori=none apertur=3 zmag=99 interac=no verify=no ')
+        iraf_script_nbadpix.write('salgori=constant skyvalu=0 apertur=3 zmag=99 interac=no verify=no ')
         iraf_script_nbadpix.write('calgori=none datamin=0 datamax=INDEF ')
         iraf_script_nbadpix.write('gain=CCDGAIN readnoi=3.05 sigma=1 itime=1')
         iraf_script_nbadpix.write(5*'\n')
