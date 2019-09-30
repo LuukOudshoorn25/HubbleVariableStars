@@ -314,7 +314,7 @@ def GetCRMasked_exptime(flist, this_file, folderpath, exptime):
         fits.writeto(storepath_median, medians, overwrite=True)
     #fits.writeto(storepath_stddev, bg_stddev_arr, overwrite=True)
     offsets = np.abs(this_file - medians)
-    CRmask = np.where(offsets>10*bg_stddev_arr, True, False)
+    CRmask = np.where(offsets>9*bg_stddev_arr, True, False)
     this_file_corr = this_file.copy()
     this_file_corr *= exptime
     this_file_corr[CRmask] = -1e10
