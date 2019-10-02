@@ -20,7 +20,7 @@ from astropy.io import ascii
 import shutil
 from drizzlepac import tweakreg
 from astropy.stats import SigmaClip
-from photutils import StdBackgroundRMS
+#from photutils import StdBackgroundRMS
 from astropy.wcs import WCS
 from drizzlepac import astrodrizzle
 from reproject import reproject_interp, reproject_exact
@@ -28,8 +28,8 @@ from reproject import reproject_interp, reproject_exact
 
 scamp_ex = 'scamp '
 ### PARAMS ###
-SORT           = False
-CREATE_TREE    = False
+SORT           = True
+CREATE_TREE    = True
 DRIZZLE_IMS    = False
 DRIZZLE_4IMS   = False
 DO_ASTROMETRY  = False
@@ -39,12 +39,10 @@ DO_REGRID      = False
 DO_REGRID_PAR  = False
 DO_REGRID4     = False	
 DO_REGRID4_PAR = False
-DO_APPHOT      = True
-DO_GET_NBadPIX = True
+DO_APPHOT      = False
 DO_APPHOT4     = False
 write_DS9_reg  = False
-DO_IRAF_DF     = False
-DO_IRAF_NCR_DF = True
+DO_IRAF_DF     = False 	
 ### Function definitions ###
 def initialize():
     return
@@ -64,7 +62,7 @@ def mkdir(path):
 
 def sort_files():
 
-    fitslist = glob('*fl*fits')
+    fitslist = glob('../F775W_downloads/*fl*fits')
     filterlist = []
     for enum, fitsfile in enumerate(fitslist):
         print("Going through the fits to see unique filters, now at ", enum, " of ", len(fitslist), end='\r')
@@ -151,7 +149,8 @@ def drizzard():
                       updatehdr=True,
                       wcsname='UVIS_FLC',
                       reusename=True,
-                      interactive=False)
+                      interactive=False,
+                      ncores=16)
 
     astrodrizzle.AstroDrizzle('*_flt.fits',
                               output='_drz.fits',
@@ -166,7 +165,8 @@ def drizzard():
                               blot=False,
                               driz_cr=False,
                               final_wcs=True,
-                              skysub=False)
+                              skysub=False,
+                              ncores=16)
 
 def drizzard_multiple():
     tweakreg.TweakReg('*_flt.fits',
@@ -279,50 +279,7 @@ def regrid_worker(im):
         print("Write done")
         print("Took ", (time.time()-start_time), " sec")
 
-def GetCRMasked_exptime(flist, this_file, folderpath, exptime):
-    storepath_median = folderpath + 'median.fits'
-    if os.path.exists(storepath_median):
-        medians       = fits.open(storepath_median)[0].data
-    if os.path.exists('../stddevs.txt'):
-        stddevs_df = pd.read_csv('../stddevs.txt', delimiter='\t')
-        stddevs_df.columns = ['folder', 'stddev']
-        stddev = float(stddevs_df.groupby('folder').median().loc[folderpath])
-    else:
-        print('Could not find stddevs.txt, now calculating')
-        # Load all data    
-        flist = flist[:14]
-        all_frames = np.zeros((*this_file.shape, len(flist)))
-        for i,file in enumerate(flist):
-            all_frames[:,:,i] = fits.open(file)[0].data
-        medians = np.nanmedian(all_frames, axis=2)  
-        del all_frames      
-    # Get Background STDDEV
-    if not os.path.exists('../stddevs.txt'):
-        regA = this_file[this_file.shape[0]-2555:this_file.shape[0]-2525,this_file.shape[1]-2607:this_file.shape[1]-2570]
-        stddev1 = np.nanstd(regA[regA<np.nanmedian(regA)])
-        regB = this_file[this_file.shape[0]-965:this_file.shape[0]-923,this_file.shape[1]-1271:this_file.shape[1]-1225]
-        stddev2 = np.nanstd(regB[regB<np.nanmedian(regB)])
-        regC = this_file[this_file.shape[0]-757:this_file.shape[0]-729,this_file.shape[1]-1860:this_file.shape[1]-1812]
-        stddev3 = np.nanstd(regC[regC<np.nanmedian(regC)])
-        regD = this_file[this_file.shape[0]-507:this_file.shape[0]-445,this_file.shape[1]-3964:this_file.shape[1]-3883]
-        stddev4 = np.nanstd(regD[regD<np.nanmedian(regD)])
 
-        stddev = np.nanmedian(np.sort(np.array([stddev1, stddev2, stddev3, stddev4]))[:-1])
-    print("Bg stddev: ",stddev)
-    bg_stddev_arr = stddev * medians / np.nanmedian(this_file)
-    if not os.path.exists(storepath_median):
-        fits.writeto(storepath_median, medians, overwrite=True)
-    #fits.writeto(storepath_stddev, bg_stddev_arr, overwrite=True)
-    offsets = np.abs(this_file - medians)
-    CRmask = np.where(offsets>9*bg_stddev_arr, True, False)
-    this_file_corr = this_file.copy()
-    this_file_corr *= exptime
-    this_file_corr[CRmask] = -1e10
-
-    with open('../stddevs.txt', 'a+') as stddev_list:
-        stddev_list.write(folderpath + '\t'+str(stddev)+'\n')
-
-    return this_file_corr, stddev*exptime, CRmask
 ### SORT ALL FILES ACCORDING TO FILTER AND EXPOSURE LENGTH ###
 if SORT:
     sort_files()
@@ -580,12 +537,7 @@ if DO_REFERENCE:
 
 ### START APERTURE PHOTOMETRY USING IRAF ###
 
-
-
-
 if DO_APPHOT:
-    """Correct the FITS files by masking cosmic rays, multiply them by their exposure time 
-       and write the CR masks to FITS files"""
     create_dir_tree_IRAF()
     os.chdir('./working_dir')
     if DO_APPHOT4:
@@ -598,156 +550,123 @@ if DO_APPHOT:
 
     # Check which files are already done
     drizzled_apphot_flist        = glob('../IRAF_cat*/*/*/*.phot')
+
+
     not_done_arr = ([(w[:-5]+'.phot').replace('DRIZZLED', 'IRAF_cats') not in 
                 drizzled_apphot_flist for w in drizzled_astrom_regrid_flist])
     drizzled_astrom_regrid_flist = [drizzled_astrom_regrid_flist[w] for w in np.where(not_done_arr)[0]]
-    iraf_script_images  = open('app_phot_script.cl', 'w') 
-#    iraf_script_crmasks = open('app_phot_script_crmasks.cl', 'w') 
-    for f_count, im in enumerate(drizzled_astrom_regrid_flist): 
-        folder = '/'.join(im.split('/')[:-1])+'/'
-        print(im)
-        splitted_dir = im.split('/')
-        hst_filter   = splitted_dir[2]
-        if (hst_filter == 'F110W') or (hst_filter == 'F160W'):
-            continue
-        hdu        = fits.open(im)[0]
-        im_exptime = im[:-5]+'_exptime.fits'
-        im_crmask  = im[:-5]+'_crmask.fits'
-        print('Working on file {} from {}'.format(f_count, len(drizzled_astrom_regrid_flist)), end='\r')     
-        if not (os.path.exists(im_exptime) and os.path.exists(im_crmask)):
-           # CR clean
-            flist                    = glob(folder+'*drz_sci_regrid.fits')
-            hdu.data, sigma, CRmask  = GetCRMasked_exptime(flist, hdu.data, folder, hdu.header['EXPTIME'])
-            hdu.writeto(im_exptime, overwrite=True)
-            # Save CRmask to FITS file
-            CRmask = CRmask.astype(type(hdu.data[555,555]))
-            CR_hdu = hdu.copy()
-            CR_hdu.data = CRmask
-            CR_hdu.writeto(im_crmask, overwrite=True)
-        else:
-            # If CRfile and CRcleaned file already exist, read stddevs from file
-            stddevs_df = pd.read_csv('../stddevs.txt', delimiter='\t')
-            stddevs_df.columns = ['folder', 'stddev']
-            stddev = float(stddevs_df.groupby('folder').median().loc[folder])
-        # Define magnitude zeropoints...
-        zmag  = {'F336W':23.46,'F438W':24.98,'F555W': 25.81, 'F814W': 24.67, 'F656N': 19.92}[hst_filter]-0.1
-        if DO_APPHOT4:
-            target_dir = (im[:-5]+'.phot ').replace('DRIZZLED', 'IRAF_cats_drz')
-        else:
-            target_dir = (im[:-5]+'.phot ').replace('DRIZZLED', 'IRAF_cats')
-        # Write task per image to do aperture photometry in IRAF
-        iraf_script_images.write('digiphot.apphot.phot image='+im_exptime+' ')
-        iraf_script_images.write('coords=all_stars_xy_coords.coo output='+target_dir)
-        iraf_script_images.write('salgori=mode annulus=4 dannulus=3 apertur=3 zmag='+str(zmag) + ' interac=no verify=no ')
-        iraf_script_images.write('calgori=centroid cbox=3 datamin=0 datamax=INDEF ')
-        iraf_script_images.write('gain=CCDGAIN readnoi=3.05 sigma='+str(sigma) + ' itime='+str(hdu.header['EXPTIME']))
-        iraf_script_images.write(5*'\n')
-        del hdu
-    iraf_script_images.close()
+    with open('app_phot_script_remaining.cl', 'w') as iraf_script:    
+        for f_count, im in enumerate(drizzled_astrom_regrid_flist):
+            print(im)
+            splitted_dir = im.split('/')
+            hst_filter   = splitted_dir[2]
+            if (hst_filter == 'F110W') or (hst_filter == 'F160W'):
+                continue
+            hdu        = fits.open(im, memmap=False)[0]
+            im_exptime = im[:-5]+'_exptime.fits'
+            print('Working on file {} from {}'.format(f_count, len(drizzled_astrom_regrid_flist)), end='\r')     
+            if not os.path.exists(im_exptime):
+                hdu.data   = hdu.data * hdu.header['EXPTIME']
+                hdu.writeto(im_exptime, overwrite=True)
+            
+            data = fits.open(im_exptime)[0].data
+            sigma_clip = SigmaClip(sigma=1.2)
+            bkgrms = StdBackgroundRMS(sigma_clip)
+            sigma = bkgrms.calc_background_rms(data)
+            zmag  = {'F336W':23.46,'F438W':24.98,'F555W': 25.81, 'F814W': 24.67, 'F656N': 19.92}[hst_filter]-0.1
+            if DO_APPHOT4:
+                target_dir = (im[:-5]+'.phot ').replace('DRIZZLED', 'IRAF_cats_drz')
+            else:
+                target_dir = (im[:-5]+'.phot ').replace('DRIZZLED', 'IRAF_cats')
+            iraf_script.write('digiphot.apphot.phot image='+im_exptime+' ')
+            iraf_script.write('coords=all_stars_xy_coords.coo output='+target_dir)
+            iraf_script.write('salgori=mode annulus=4 dannulus=3 apertur=3 zmag='+str(zmag) + ' interac=no verify=no ')
+            iraf_script.write('calgori=centroid cbox=3 datamin=INDEF datamax=INDEF ')
+            iraf_script.write('gain=CCDGAIN readnoi=3.05 sigma='+str(sigma) + ' itime='+str(hdu.header['EXPTIME']))
+            iraf_script.write(5*'\n')
+            del hdu
+    iraf_script.close()
     os.chdir('../')
         
 
-if DO_GET_NBadPIX:
-    """Function to get the number of masked pixels inside the annulus IRAF used to do the photometry"""
-    # For each file, read in the IRAF catalogue, use the (x,y) coordinates and write those to a new iraf command file
-    os.chdir('./working_dir')
-    if DO_APPHOT4:
-        drizzled_astrom_regrid_flist = glob('../MultiDrizzle/*/*/drz_sci*regrid.fits')
-    else: 
-        drizzled_astrom_regrid_flist = glob('../DRIZZLED/*/*/*drz_sci_regrid.fits')
-    iraf_script_nbadpix = open('app_phot_script_nbadpix.cl', 'w') 
-    for f_count, im in enumerate(drizzled_astrom_regrid_flist): 
-        folder = '/'.join(im.split('/')[:-1])+'/'
-        print(im)
-        splitted_dir = im.split('/')
-        hst_filter   = splitted_dir[2]
-        im_crmask  = im[:-5]+'_crmask.fits'
-        if (hst_filter == 'F110W') or (hst_filter == 'F160W'):
-            continue
-        if DO_APPHOT4:
-            iraf_cat_dir  = (im[:-5]+'.phot').replace('DRIZZLED', 'IRAF_cats_drz')
-            coordlist_dir = iraf_cat_dir.replace('.phot', '_coords.coo')
-        else:
-            iraf_cat_dir = (im[:-5]+'.phot').replace('DRIZZLED', 'IRAF_cats')
-            coordlist_dir = iraf_cat_dir.replace('.phot', '_coords.coo')
-        if not os.path.exists(coordlist_dir):
-            photfile = ascii.read(iraf_cat_dir).to_pandas().set_index('ID')
-            xycoords = photfile[['XCENTER', 'YCENTER']]
-            xycoords.to_csv(coordlist_dir, sep='\t', index=False, header=False)
-        if DO_APPHOT4:
-            target_dir = (im[:-5]+'_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats_drz')
-        else:
-            target_dir = (im[:-5]+'_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats')
-        im_exptime = im[:-5]+'_exptime.fits'
-        iraf_script_nbadpix.write('digiphot.apphot.phot image='+im_crmask+' ')
-        iraf_script_nbadpix.write('coords= '+coordlist_dir+' output='+target_dir)
-        iraf_script_nbadpix.write('salgori=constant skyvalu=0 apertur=3 zmag=99 interac=no verify=no ')
-        iraf_script_nbadpix.write('calgori=none datamin=0 datamax=INDEF ')
-        iraf_script_nbadpix.write('gain=CCDGAIN readnoi=3.05 sigma=1 itime=1')
-        iraf_script_nbadpix.write(5*'\n')
-    iraf_script_nbadpix.close()
 
+    """# Step 2: define input filelist
+    os.system('rm -rf ./working_dir/*')
+    with open('./working_dir/flist_in.txt', 'w') as flist_in:
+        for im in drizzled_astrom_regrid_flist:
+            flist_in.write(im+'\n')
+    # Step 1: define output filelist
+    with open('./working_dir/flist_out.txt', 'w') as flist_out:
+        for im in drizzled_astrom_regrid_flist:
+            root       = im.split('/')[-1]
+            target_dir = '/'.join(im.split('/')[:-1])+'/'
+            if DO_APPHOT4:
+                target_dir = target_dir.replace('./MultiDrizzle/', './IRAF_cats_drz/')
+            else:
+                target_dir = target_dir.replace('./DRIZZLED/', './IRAF_cats/')
+            if not os.path.exists(target_dir):
+                mkdir(target_dir)#os.makedirs(path)
+            target_dir = target_dir +root[:-5]+'.phot'
+            flist_out.write(target_dir+'\n')
+    flist_in.close()
+    flist_out.close()
+
+    # Files created. Mow produce script for IRAF
+    with open('./working_dir/app_phot_script.cl', 'w') as iraf_script:
+        iraf_script.write('digiphot.apphot.phot image=@./working_dir/flist_in.txt ')
+        iraf_script.write('coords=all_stars_xy_coords.coo output=@./working_dir/flist_out.txt ')
+        iraf_script.write('salgori=mode annulus=4 dannulus=3 apertur=3 zmag=0 interac=no verify=yes ')
+        iraf_script.write('calgori=centroid cbox=6 datamin=INDEF datamax=INDEF ')
+        iraf_script.write('gain=CCDGAIN readnoi=3.05 sigma=0.00446819')
+        iraf_script.close()
+    ### NOTE: ALL SET BUT IRAF needs to be started by hand now ###  
+"""
 
 
 if write_DS9_reg:
     write_ds9_regions()
 
 
-if DO_IRAF_DF or DO_IRAF_NCR_DF: 
-    """Concatenate all IRAF photometry catalogues into one CSV"""
-    """First do this for the photometry catalogues"""
+if DO_IRAF_DF: 
     # Get the filelists for all catalogs
-    photometry_files  = glob('./IRAF_cats/*/*/*regrid.phot')
-    nbadpix_files = glob('./IRAF_cats/*/*/*nbadpix.phot')
-    output_fnames = ['APP_phot_all_exps.csv', 'NBadpix_all_exps.csv']
-    if DO_IRAF_DF and DO_IRAF_NCR_DF:
-        todo = [photometry_files,nbadpix_files]
-    elif DO_IRAF_DF and not DO_IRAF_NCR_DF:
-        todo = [photometry_files]
-    elif DO_IRAF_NCR_DF and not DO_IRAF_DF:
-        todo = [nbadpix_files]
-    for apphot_files in todo:
-        if apphot_files == photometry_files:
-            which = 0
-        elif apphot_files == nbadpix_files:
-            which = 1
-        # See what columns we need to store
-        columns = ascii.read(apphot_files[0]).to_pandas().columns
-        # Create DF with 5 indexes
-        IRAF_df = pd.DataFrame({'ID':[], 'Filter':[], 'T_Start':[],'Exp_Length':[], 'DrizzleType':[]})
-        IRAF_df = IRAF_df.set_index(['ID', 'Filter', 'T_Start', 'Exp_Length', 'DrizzleType'])
-        # Add the columns that we fill later
-        for col in [w for w in columns if w is not 'ID']:
-            IRAF_df[col] = []
-        # Loop over the photometry files
-        for f_count, apphot_file in enumerate(apphot_files):
-            splitted_dir = apphot_file.split('/')
-            # Extract relevant info for the indexing
-            # Due to structure of directories, most info is in the filepath
-            drizzle_type = ('SingleDrizzle' if splitted_dir[1] == 'IRAF_cats' else 'MultiDrizzle')
-            exp_length   = splitted_dir[3]
-            hst_filter   = splitted_dir[2]
-            if drizzle_type=='SingleDrizzle':
-                fname        = splitted_dir[4].split('_')[0]
-                # Lookup associated FITS file
-                hdul         = fits.open(glob('./DRIZZLED/*/*/*'+fname+'*')[0])
-                # Extract info from its header
-                t_start      = hdul[0].header['EXPSTART']
-                #obs_date     = hdul[0].header['DATE-OBS']
-            else:
-                t_start      = 'None'
-                obs_date     = 'None'
-    #        print("Filter "  , hst_filter)
-    #        print("Exposure ", fname)
-            print('Working on file {} of {}'.format(f_count, len(apphot_files)), end='\r')
-            # Read in the photometry file
-            phot_df = ascii.read(apphot_file).to_pandas()
-            # Add info to df
-            for col, val in zip(['Filter', 'T_Start', 'Exp_Length', 'DrizzleType'], [hst_filter, t_start, exp_length, drizzle_type]):
-                phot_df[col] = val
-            phot_df = phot_df.set_index(['ID', 'Filter', 'T_Start', 'Exp_Length', 'DrizzleType'])
-            IRAF_df = pd.concat((IRAF_df, phot_df), axis=0)
-        IRAF_df.sort_index().to_csv(output_fnames[which])
+    apphot_files = glob('./IRAF_cat*/*/*/*.phot')
+    # See what columns we need to store
+    columns = ascii.read(apphot_files[0]).to_pandas().columns
+    # Create DF with 5 indexes
+    IRAF_df = pd.DataFrame({'ID':[], 'Filter':[], 'T_Start':[],'Exp_Length':[], 'DrizzleType':[]})
+    IRAF_df = IRAF_df.set_index(['ID', 'Filter', 'T_Start', 'Exp_Length', 'DrizzleType'])
+    # Add the columns that we fill later
+    for col in [w for w in columns if w is not 'ID']:
+        IRAF_df[col] = []
+    # Loop over the photometry files
+    for f_count, apphot_file in enumerate(apphot_files):
+        splitted_dir = apphot_file.split('/')
+        # Extract relevant info for the indexing
+        # Due to structure of directories, most info is in the filepath
+        drizzle_type = ('SingleDrizzle' if splitted_dir[1] == 'IRAF_cats' else 'MultiDrizzle')
+        exp_length   = splitted_dir[3]
+        hst_filter   = splitted_dir[2]
+        if drizzle_type=='SingleDrizzle':
+            fname        = splitted_dir[4].split('_')[0]
+            # Lookup associated FITS file
+            hdul         = fits.open(glob('./DRIZZLED/*/*/*'+fname+'*')[0])
+            # Extract info from its header
+            t_start      = hdul[0].header['EXPSTART']
+            #obs_date     = hdul[0].header['DATE-OBS']
+        else:
+            t_start      = 'None'
+            obs_date     = 'None'
+#        print("Filter "  , hst_filter)
+#        print("Exposure ", fname)
+        print('Working on file {} of {}'.format(f_count, len(apphot_files)), end='\r')
+        # Read in the photometry file
+        phot_df = ascii.read(apphot_file).to_pandas()
+        # Add info to df
+        for col, val in zip(['Filter', 'T_Start', 'Exp_Length', 'DrizzleType'], [hst_filter, t_start, exp_length, drizzle_type]):
+            phot_df[col] = val
+        phot_df = phot_df.set_index(['ID', 'Filter', 'T_Start', 'Exp_Length', 'DrizzleType'])
+        IRAF_df = pd.concat((IRAF_df, phot_df), axis=0)
+    IRAF_df.sort_index().to_csv('APP_phot_all_exps.csv')
         
 
 print("Finished in ", time.time() - tstart)
