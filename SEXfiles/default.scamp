@@ -14,7 +14,7 @@ REF_SERVER         vizier.unistra.fr   # Internet addresses of catalog servers
                                        # vizier.cfa.harvard.edu and
                                        # viziersaao.chpc.ac.za
 REF_TIMEOUT            10              # Server connection timeouts (s) 0=none
-ASTREF_CATALOG         FILE            # NONE,FILE,USNO-A2,USNO-B1,GSC-2.3,
+ASTREF_CATALOG         GAIA-DR2            # NONE,FILE,USNO-A2,USNO-B1,GSC-2.3,
                                        # TYCHO-2,UCAC-4,URAT-1,NOMAD-1,PPMX,
                                        # CMC-15,2MASS,DENIS-3,SDSS-R9,SDSS-R12,
                                        # IGSL,GAIA-DR1,GAIA-DR2,PANSTARRS-1,
@@ -28,7 +28,7 @@ ASTREFERR_KEYS         ERRA_WORLD, ERRB_WORLD, ERRTHETA_WORLD
 ASTREFMAG_KEY          MAG             # Local ref.cat. magnitude parameter
 ASTREFMAGERR_KEY       MAGERR          # Local ref.cat. mag. error parameter
 ASTREFOBSDATE_KEY      OBSDATE         # Local ref.cat. obs. date parameter
-ASTREFMAG_LIMITS       -99.0,22        # Select magnitude range in ASTREF_BAND
+ASTREFMAG_LIMITS       -99.0,19        # Select magnitude range in ASTREF_BAND
 SAVE_REFCATALOG        N               # Save ref catalogs in FITS-LDAC format?
 REFOUT_CATPATH         .               # Save path for reference catalogs
  
@@ -54,7 +54,7 @@ FULLOUTCAT_NAME        full.cat        # Full output catalog filename
 MATCH                  Y               # Do pattern-matching (Y/N) ?
 MATCH_NMAX             0               # Max.number of detections for MATCHing
                                        # (0=auto)
-PIXSCALE_MAXERR        1.2             # Max scale-factor uncertainty
+PIXSCALE_MAXERR        1.1             # Max scale-factor uncertainty
 POSANGLE_MAXERR        5.0             # Max position-angle uncertainty (deg)
 POSITION_MAXERR        1.0             # Max positional uncertainty (arcmin)
 MATCH_RESOL            0               # Matching resolution (arcsec); 0=auto
@@ -84,8 +84,8 @@ ASTREF_WEIGHT          1.0             # Relative weight of ref.astrom.cat.
 ASTRACCURACY_TYPE      SIGMA-PIXEL     # SIGMA-PIXEL, SIGMA-ARCSEC,
                                        # or TURBULENCE-ARCSEC
 ASTRACCURACY_KEY       ASTRACCU        # FITS keyword for ASTR_ACCURACY param.
-ASTR_ACCURACY          0.01            # Astrom. uncertainty floor parameter
-ASTRCLIP_NSIGMA        3.0             # Astrom. clipping threshold in sigmas
+ASTR_ACCURACY          0.002            # Astrom. uncertainty floor parameter
+ASTRCLIP_NSIGMA        5.0             # Astrom. clipping threshold in sigmas
 COMPUTE_PARALLAXES     N               # Compute trigonom. parallaxes (Y/N)?
 COMPUTE_PROPERMOTIONS  N               # Compute proper motions (Y/N)?
 CORRECT_COLOURSHIFTS   N               # Correct for colour shifts (Y/N)?
@@ -95,7 +95,7 @@ ASTR_IMAFLAGSMASK      0x0             # Astrometry rejection mask on IMAFLAGS
  
 #---------------------------- Photometric solution ----------------------------
  
-SOLVE_PHOTOM           Y               # Compute photometric solution (Y/N) ?
+SOLVE_PHOTOM           N               # Compute photometric solution (Y/N) ?
 MAGZERO_OUT            0.0             # Magnitude zero-point(s) in output
 MAGZERO_INTERR         0.01            # Internal mag.zero-point accuracy
 MAGZERO_REFERR         0.03            # Photom.field mag.zero-point accuracy
@@ -114,10 +114,10 @@ PHOT_IMAFLAGSMASK      0x0             # Photometry rejection mask on IMAFLAGS
  
 #----------------------------- Source selection -------------------------------
  
-SN_THRESHOLDS          10.0,70.0      # S/N thresholds (in sigmas) for all and
+SN_THRESHOLDS          20.0,70.0      # S/N thresholds (in sigmas) for all and
                                        # high-SN sample
-FWHM_THRESHOLDS        1,10             # FWHM thresholds (in pixels) for sources
-ELLIPTICITY_MAX        0.1             # Max. source ellipticity
+FWHM_THRESHOLDS        3,12             # FWHM thresholds (in pixels) for sources
+ELLIPTICITY_MAX        0.08             # Max. source ellipticity
 FLAGS_MASK             0x00f0          # Global rejection mask on SEx FLAGS
 WEIGHTFLAGS_MASK       0x00ff          # Global rejec. mask on SEx FLAGS_WEIGHT
 IMAFLAGS_MASK          0x0             # Global rejec. mask on SEx IMAFLAGS_ISO

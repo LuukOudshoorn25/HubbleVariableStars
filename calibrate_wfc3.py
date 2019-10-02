@@ -39,12 +39,13 @@ DO_REGRID      = False
 DO_REGRID_PAR  = False
 DO_REGRID4     = False	
 DO_REGRID4_PAR = False
-DO_APPHOT      = True
+DO_APPHOT      = False
+pms_stars      = True
 DO_GET_NBadPIX = True
 DO_APPHOT4     = False
 write_DS9_reg  = False
 DO_IRAF_DF     = False
-DO_IRAF_NCR_DF = True
+DO_IRAF_NCR_DF = False
 ### Function definitions ###
 def initialize():
     return
@@ -308,7 +309,7 @@ def GetCRMasked_exptime(flist, this_file, folderpath, exptime):
         stddev4 = np.nanstd(regD[regD<np.nanmedian(regD)])
 
         stddev = np.nanmedian(np.sort(np.array([stddev1, stddev2, stddev3, stddev4]))[:-1])
-    print("Bg stddev: ",stddev)
+    print("Bg stddev: ",stddev*exptime)
     bg_stddev_arr = stddev * medians / np.nanmedian(this_file)
     if not os.path.exists(storepath_median):
         fits.writeto(storepath_median, medians, overwrite=True)
@@ -320,7 +321,7 @@ def GetCRMasked_exptime(flist, this_file, folderpath, exptime):
     this_file_corr[CRmask] = -1e10
 
     with open('../stddevs.txt', 'a+') as stddev_list:
-        stddev_list.write(folderpath + '\t'+str(stddev)+'\n')
+        stddev_list.write(folderpath + '\t'+str(stddev*exptime)+'\n')
 
     return this_file_corr, stddev*exptime, CRmask
 ### SORT ALL FILES ACCORDING TO FILTER AND EXPOSURE LENGTH ###
@@ -586,7 +587,7 @@ if DO_REFERENCE:
 if DO_APPHOT:
     """Correct the FITS files by masking cosmic rays, multiply them by their exposure time 
        and write the CR masks to FITS files"""
-    create_dir_tree_IRAF()
+    #create_dir_tree_IRAF()
     os.chdir('./working_dir')
     if DO_APPHOT4:
         drizzled_astrom_regrid_flist = glob('../MultiDrizzle/*/*/drz_sci*regrid.fits')
@@ -597,9 +598,20 @@ if DO_APPHOT:
     # Since we do not use PyRAF, we need to make a cl script and run that in IRAF using cmd
 
     # Check which files are already done
-    drizzled_apphot_flist        = glob('../IRAF_cat*/*/*/*.phot')
-    not_done_arr = ([(w[:-5]+'.phot').replace('DRIZZLED', 'IRAF_cats') not in 
-                drizzled_apphot_flist for w in drizzled_astrom_regrid_flist])
+    
+    if pms_stars:
+        coordfile    = 'pms_stars_xy_coords.coo'
+    else:
+        coordfile    = 'all_stars_xy_coords.coo'
+    if not pms_stars:
+        drizzled_apphot_flist        = glob('../IRAF_cat*/*/*/*regrid.phot')
+        not_done_arr = ([(w[:-5]+'.phot').replace('DRIZZLED', 'IRAF_cats') not in 
+                    drizzled_apphot_flist for w in drizzled_astrom_regrid_flist])
+    elif pms_stars:
+        drizzled_apphot_flist        = glob('../IRAF_cat*/*/*/*_pmsstars.phot')
+        not_done_arr = ([(w[:-5]+'.phot').replace('DRIZZLED', 'IRAF_cats') not in 
+                    drizzled_apphot_flist for w in drizzled_astrom_regrid_flist])
+
     drizzled_astrom_regrid_flist = [drizzled_astrom_regrid_flist[w] for w in np.where(not_done_arr)[0]]
     iraf_script_images  = open('app_phot_script.cl', 'w') 
 #    iraf_script_crmasks = open('app_phot_script_crmasks.cl', 'w') 
@@ -614,7 +626,7 @@ if DO_APPHOT:
         im_exptime = im[:-5]+'_exptime.fits'
         im_crmask  = im[:-5]+'_crmask.fits'
         print('Working on file {} from {}'.format(f_count, len(drizzled_astrom_regrid_flist)), end='\r')     
-        if not (os.path.exists(im_exptime) and os.path.exists(im_crmask)):
+        if not 0>np.inf:#(os.path.exists(im_exptime) and os.path.exists(im_crmask)):
            # CR clean
             flist                    = glob(folder+'*drz_sci_regrid.fits')
             hdu.data, sigma, CRmask  = GetCRMasked_exptime(flist, hdu.data, folder, hdu.header['EXPTIME'])
@@ -632,12 +644,18 @@ if DO_APPHOT:
         # Define magnitude zeropoints...
         zmag  = {'F336W':23.46,'F438W':24.98,'F555W': 25.81, 'F814W': 24.67, 'F656N': 19.92}[hst_filter]-0.1
         if DO_APPHOT4:
-            target_dir = (im[:-5]+'.phot ').replace('DRIZZLED', 'IRAF_cats_drz')
+            if pms_stars:
+                target_dir = (im[:-5]+'_pmsstars.phot ').replace('DRIZZLED', 'IRAF_cats_drz')
+            else:
+                target_dir = (im[:-5]+'.phot ').replace('DRIZZLED', 'IRAF_cats_drz')
         else:
-            target_dir = (im[:-5]+'.phot ').replace('DRIZZLED', 'IRAF_cats')
+            if pms_stars:
+                target_dir = (im[:-5]+'_pmsstars.phot ').replace('DRIZZLED', 'IRAF_cats')
+            else:
+                target_dir = (im[:-5]+'.phot ').replace('DRIZZLED', 'IRAF_cats')
         # Write task per image to do aperture photometry in IRAF
         iraf_script_images.write('digiphot.apphot.phot image='+im_exptime+' ')
-        iraf_script_images.write('coords=all_stars_xy_coords.coo output='+target_dir)
+        iraf_script_images.write('coords='+coordfile+' output='+target_dir)
         iraf_script_images.write('salgori=mode annulus=4 dannulus=3 apertur=3 zmag='+str(zmag) + ' interac=no verify=no ')
         iraf_script_images.write('calgori=centroid cbox=3 datamin=0 datamax=INDEF ')
         iraf_script_images.write('gain=CCDGAIN readnoi=3.05 sigma='+str(sigma) + ' itime='+str(hdu.header['EXPTIME']))
@@ -656,6 +674,7 @@ if DO_GET_NBadPIX:
     else: 
         drizzled_astrom_regrid_flist = glob('../DRIZZLED/*/*/*drz_sci_regrid.fits')
     iraf_script_nbadpix = open('app_phot_script_nbadpix.cl', 'w') 
+
     for f_count, im in enumerate(drizzled_astrom_regrid_flist): 
         folder = '/'.join(im.split('/')[:-1])+'/'
         print(im)
@@ -664,20 +683,37 @@ if DO_GET_NBadPIX:
         im_crmask  = im[:-5]+'_crmask.fits'
         if (hst_filter == 'F110W') or (hst_filter == 'F160W'):
             continue
+
         if DO_APPHOT4:
-            iraf_cat_dir  = (im[:-5]+'.phot').replace('DRIZZLED', 'IRAF_cats_drz')
-            coordlist_dir = iraf_cat_dir.replace('.phot', '_coords.coo')
+            if pms_stars:
+                iraf_cat_dir = (im[:-5]+'_pmsstars.phot ').replace('DRIZZLED', 'IRAF_cats_drz')
+                coordlist_dir = iraf_cat_dir.replace('.phot', '_pmscoords.coo')
+            else:
+                iraf_cat_dir = (im[:-5]+'.phot ').replace('DRIZZLED', 'IRAF_cats_drz')
+                coordlist_dir = iraf_cat_dir.replace('.phot', '_coords.coo')
         else:
-            iraf_cat_dir = (im[:-5]+'.phot').replace('DRIZZLED', 'IRAF_cats')
-            coordlist_dir = iraf_cat_dir.replace('.phot', '_coords.coo')
+            if pms_stars:
+                iraf_cat_dir = (im[:-5]+'_pmsstars.phot ').replace('DRIZZLED', 'IRAF_cats')
+                coordlist_dir = iraf_cat_dir.replace('.phot', '_pmscoords.coo')
+            else:
+                iraf_cat_dir = (im[:-5]+'.phot ').replace('DRIZZLED', 'IRAF_cats')
+                coordlist_dir = iraf_cat_dir.replace('.phot', '_coords.coo')    
+
         if not os.path.exists(coordlist_dir):
             photfile = ascii.read(iraf_cat_dir).to_pandas().set_index('ID')
             xycoords = photfile[['XCENTER', 'YCENTER']]
             xycoords.to_csv(coordlist_dir, sep='\t', index=False, header=False)
         if DO_APPHOT4:
-            target_dir = (im[:-5]+'_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats_drz')
+            if not pmsstars:
+                target_dir = (im[:-5]+'_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats_drz')
+            else: 
+                target_dir = (im[:-5]+'_pmsstars_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats_drz')    
         else:
-            target_dir = (im[:-5]+'_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats')
+            if not pmsstars:
+                target_dir = (im[:-5]+'_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats')
+            else:
+                target_dir = (im[:-5]+'_pmsstars_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats')
+
         im_exptime = im[:-5]+'_exptime.fits'
         iraf_script_nbadpix.write('digiphot.apphot.phot image='+im_crmask+' ')
         iraf_script_nbadpix.write('coords= '+coordlist_dir+' output='+target_dir)
