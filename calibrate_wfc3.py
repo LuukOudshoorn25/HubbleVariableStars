@@ -745,9 +745,14 @@ if DO_IRAF_DF or DO_IRAF_NCR_DF:
     """Concatenate all IRAF photometry catalogues into one CSV"""
     """First do this for the photometry catalogues"""
     # Get the filelists for all catalogs
-    photometry_files  = glob('./IRAF_cats/*/*/*regrid.phot')
-    nbadpix_files = glob('./IRAF_cats/*/*/*nbadpix.phot')
-    output_fnames = ['APP_phot_all_exps.csv', 'NBadpix_all_exps.csv']
+    if not pms_stars:
+        photometry_files  = glob('./IRAF_cats/*/*/*regrid.phot')
+        nbadpix_files = glob('./IRAF_cats/*/*/*regrid_nbadpix.phot')
+        output_fnames = ['APP_phot_all_exps.csv', 'NBadpix_all_exps.csv']
+    elif pms_stars:
+        photometry_files  = glob('./IRAF_cats/*/*/*regrid_pmsstars.phot')
+        nbadpix_files = glob('./IRAF_cats/*/*/*pmsstars_nbadpix.phot')
+        output_fnames = ['APP_phot_all_exps_pmsstars.csv', 'NBadpix_all_exps_pmsstars.csv']
     if DO_IRAF_DF and DO_IRAF_NCR_DF:
         todo = [photometry_files,nbadpix_files]
     elif DO_IRAF_DF and not DO_IRAF_NCR_DF:
