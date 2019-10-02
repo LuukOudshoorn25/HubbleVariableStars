@@ -41,12 +41,12 @@ DO_REGRID4     = False
 DO_REGRID4_PAR = False
 DO_APPHOT      = False
 pms_stars      = True
-IRAF_parallel  = True
-DO_GET_NBadPIX = True
+IRAF_parallel  = False
+DO_GET_NBadPIX = False
 DO_APPHOT4     = False
 write_DS9_reg  = False
-DO_IRAF_DF     = False
-DO_IRAF_NCR_DF = False
+DO_IRAF_DF     = True
+DO_IRAF_NCR_DF = True
 ### Function definitions ###
 def initialize():
     return
@@ -328,7 +328,7 @@ def GetCRMasked_exptime(flist, this_file, folderpath, exptime):
 ### SORT ALL FILES ACCORDING TO FILTER AND EXPOSURE LENGTH ###
 if SORT:
     sort_files()
-
+    
     
 ### INITIALIZE: Clear working dir and copy SEX files to there ###
 path = "./working_dir/"
