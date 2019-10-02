@@ -41,6 +41,7 @@ DO_REGRID4     = False
 DO_REGRID4_PAR = False
 DO_APPHOT      = False
 pms_stars      = True
+IRAF_parallel  = True
 DO_GET_NBadPIX = True
 DO_APPHOT4     = False
 write_DS9_reg  = False
@@ -613,55 +614,61 @@ if DO_APPHOT:
                     drizzled_apphot_flist for w in drizzled_astrom_regrid_flist])
 
     drizzled_astrom_regrid_flist = [drizzled_astrom_regrid_flist[w] for w in np.where(not_done_arr)[0]]
-    iraf_script_images  = open('app_phot_script.cl', 'w') 
-#    iraf_script_crmasks = open('app_phot_script_crmasks.cl', 'w') 
-    for f_count, im in enumerate(drizzled_astrom_regrid_flist): 
-        folder = '/'.join(im.split('/')[:-1])+'/'
-        print(im)
-        splitted_dir = im.split('/')
-        hst_filter   = splitted_dir[2]
-        if (hst_filter == 'F110W') or (hst_filter == 'F160W'):
-            continue
-        hdu        = fits.open(im)[0]
-        im_exptime = im[:-5]+'_exptime.fits'
-        im_crmask  = im[:-5]+'_crmask.fits'
-        print('Working on file {} from {}'.format(f_count, len(drizzled_astrom_regrid_flist)), end='\r')     
-        if not 0>np.inf:#(os.path.exists(im_exptime) and os.path.exists(im_crmask)):
-           # CR clean
-            flist                    = glob(folder+'*drz_sci_regrid.fits')
-            hdu.data, sigma, CRmask  = GetCRMasked_exptime(flist, hdu.data, folder, hdu.header['EXPTIME'])
-            hdu.writeto(im_exptime, overwrite=True)
-            # Save CRmask to FITS file
-            CRmask = CRmask.astype(type(hdu.data[555,555]))
-            CR_hdu = hdu.copy()
-            CR_hdu.data = CRmask
-            CR_hdu.writeto(im_crmask, overwrite=True)
-        else:
-            # If CRfile and CRcleaned file already exist, read stddevs from file
-            stddevs_df = pd.read_csv('../stddevs.txt', delimiter='\t')
-            stddevs_df.columns = ['folder', 'stddev']
-            stddev = float(stddevs_df.groupby('folder').median().loc[folder])
-        # Define magnitude zeropoints...
-        zmag  = {'F336W':23.46,'F438W':24.98,'F555W': 25.81, 'F814W': 24.67, 'F656N': 19.92}[hst_filter]-0.1
-        if DO_APPHOT4:
-            if pms_stars:
-                target_dir = (im[:-5]+'_pmsstars.phot ').replace('DRIZZLED', 'IRAF_cats_drz')
+
+    all_files = drizzled_astrom_regrid_flist.copy()
+    if IRAF_parallel:
+        nsplits=6
+    else:
+        nsplits=1
+    for which_chunk, drizzled_astrom_regrid_flist in enumerate(np.array_split(all_files,nsplits)):
+        iraf_script_images  = open('app_phot_script'+str(which_chunk+1)+'.cl', 'w') 
+        for f_count, im in enumerate(drizzled_astrom_regrid_flist): 
+            folder = '/'.join(im.split('/')[:-1])+'/'
+            print(im)
+            splitted_dir = im.split('/')
+            hst_filter   = splitted_dir[2]
+            if (hst_filter == 'F110W') or (hst_filter == 'F160W'):
+                continue
+            hdu        = fits.open(im)[0]
+            im_exptime = im[:-5]+'_exptime.fits'
+            im_crmask  = im[:-5]+'_crmask.fits'
+            print('Working on file {} from {}'.format(f_count, len(drizzled_astrom_regrid_flist)), end='\r')     
+            if not 0>np.inf:#(os.path.exists(im_exptime) and os.path.exists(im_crmask)):
+               # CR clean
+                flist                    = glob(folder+'*drz_sci_regrid.fits')
+                hdu.data, sigma, CRmask  = GetCRMasked_exptime(flist, hdu.data, folder, hdu.header['EXPTIME'])
+                hdu.writeto(im_exptime, overwrite=True)
+                # Save CRmask to FITS file
+                CRmask = CRmask.astype(type(hdu.data[555,555]))
+                CR_hdu = hdu.copy()
+                CR_hdu.data = CRmask
+                CR_hdu.writeto(im_crmask, overwrite=True)
             else:
-                target_dir = (im[:-5]+'.phot ').replace('DRIZZLED', 'IRAF_cats_drz')
-        else:
-            if pms_stars:
-                target_dir = (im[:-5]+'_pmsstars.phot ').replace('DRIZZLED', 'IRAF_cats')
+                # If CRfile and CRcleaned file already exist, read stddevs from file
+                stddevs_df = pd.read_csv('../stddevs.txt', delimiter='\t')
+                stddevs_df.columns = ['folder', 'stddev']
+                stddev = float(stddevs_df.groupby('folder').median().loc[folder])
+            # Define magnitude zeropoints...
+            zmag  = {'F336W':23.46,'F438W':24.98,'F555W': 25.81, 'F814W': 24.67, 'F656N': 19.92}[hst_filter]-0.1
+            if DO_APPHOT4:
+                if pms_stars:
+                    target_dir = (im[:-5]+'_pmsstars.phot ').replace('DRIZZLED', 'IRAF_cats_drz')
+                else:
+                    target_dir = (im[:-5]+'.phot ').replace('DRIZZLED', 'IRAF_cats_drz')
             else:
-                target_dir = (im[:-5]+'.phot ').replace('DRIZZLED', 'IRAF_cats')
-        # Write task per image to do aperture photometry in IRAF
-        iraf_script_images.write('digiphot.apphot.phot image='+im_exptime+' ')
-        iraf_script_images.write('coords='+coordfile+' output='+target_dir)
-        iraf_script_images.write('salgori=mode annulus=4 dannulus=3 apertur=3 zmag='+str(zmag) + ' interac=no verify=no ')
-        iraf_script_images.write('calgori=centroid cbox=3 datamin=0 datamax=INDEF ')
-        iraf_script_images.write('gain=CCDGAIN readnoi=3.05 sigma='+str(sigma) + ' itime='+str(hdu.header['EXPTIME']))
-        iraf_script_images.write(5*'\n')
-        del hdu
-    iraf_script_images.close()
+                if pms_stars:
+                    target_dir = (im[:-5]+'_pmsstars.phot ').replace('DRIZZLED', 'IRAF_cats')
+                else:
+                    target_dir = (im[:-5]+'.phot ').replace('DRIZZLED', 'IRAF_cats')
+            # Write task per image to do aperture photometry in IRAF
+            iraf_script_images.write('digiphot.apphot.phot image='+im_exptime+' ')
+            iraf_script_images.write('coords='+coordfile+' output='+target_dir)
+            iraf_script_images.write('salgori=mode annulus=4 dannulus=3 apertur=3 zmag='+str(zmag) + ' interac=no verify=no ')
+            iraf_script_images.write('calgori=centroid cbox=3 datamin=0 datamax=INDEF ')
+            iraf_script_images.write('gain=CCDGAIN readnoi=3.05 sigma='+str(sigma) + ' itime='+str(hdu.header['EXPTIME']))
+            iraf_script_images.write(5*'\n')
+            del hdu
+        iraf_script_images.close()
     os.chdir('../')
         
 
@@ -673,55 +680,60 @@ if DO_GET_NBadPIX:
         drizzled_astrom_regrid_flist = glob('../MultiDrizzle/*/*/drz_sci*regrid.fits')
     else: 
         drizzled_astrom_regrid_flist = glob('../DRIZZLED/*/*/*drz_sci_regrid.fits')
-    iraf_script_nbadpix = open('app_phot_script_nbadpix.cl', 'w') 
+    all_files = drizzled_astrom_regrid_flist.copy()
+    if IRAF_parallel:
+        nsplits=6
+    else:
+        nsplits=1
+    for which_chunk, drizzled_astrom_regrid_flist in enumerate(np.array_split(all_files,nsplits)):
+        iraf_script_nbadpix = open('app_phot_script_nbadpix'+str(which_chunk+1)+'.cl', 'w') 
+        for f_count, im in enumerate(drizzled_astrom_regrid_flist): 
+            folder = '/'.join(im.split('/')[:-1])+'/'
+            print(im)
+            splitted_dir = im.split('/')
+            hst_filter   = splitted_dir[2]
+            im_crmask  = im[:-5]+'_crmask.fits'
+            if (hst_filter == 'F110W') or (hst_filter == 'F160W'):
+                continue
 
-    for f_count, im in enumerate(drizzled_astrom_regrid_flist): 
-        folder = '/'.join(im.split('/')[:-1])+'/'
-        print(im)
-        splitted_dir = im.split('/')
-        hst_filter   = splitted_dir[2]
-        im_crmask  = im[:-5]+'_crmask.fits'
-        if (hst_filter == 'F110W') or (hst_filter == 'F160W'):
-            continue
-
-        if DO_APPHOT4:
-            if pms_stars:
-                iraf_cat_dir = (im[:-5]+'_pmsstars.phot ').replace('DRIZZLED', 'IRAF_cats_drz')
-                coordlist_dir = iraf_cat_dir.replace('.phot', '_pmscoords.coo')
+            if DO_APPHOT4:
+                if pms_stars:
+                    iraf_cat_dir = (im[:-5]+'_pmsstars.phot').replace('DRIZZLED', 'IRAF_cats_drz')
+                    coordlist_dir = iraf_cat_dir.replace('.phot', '_pmscoords.coo')
+                else:
+                    iraf_cat_dir = (im[:-5]+'.phot').replace('DRIZZLED', 'IRAF_cats_drz')
+                    coordlist_dir = iraf_cat_dir.replace('.phot', '_coords.coo')
             else:
-                iraf_cat_dir = (im[:-5]+'.phot ').replace('DRIZZLED', 'IRAF_cats_drz')
-                coordlist_dir = iraf_cat_dir.replace('.phot', '_coords.coo')
-        else:
-            if pms_stars:
-                iraf_cat_dir = (im[:-5]+'_pmsstars.phot ').replace('DRIZZLED', 'IRAF_cats')
-                coordlist_dir = iraf_cat_dir.replace('.phot', '_pmscoords.coo')
-            else:
-                iraf_cat_dir = (im[:-5]+'.phot ').replace('DRIZZLED', 'IRAF_cats')
-                coordlist_dir = iraf_cat_dir.replace('.phot', '_coords.coo')    
+                if pms_stars:
+                    iraf_cat_dir = (im[:-5]+'_pmsstars.phot').replace('DRIZZLED', 'IRAF_cats')
+                    coordlist_dir = iraf_cat_dir.replace('.phot', '_pmscoords.coo')
+                else:
+                    iraf_cat_dir = (im[:-5]+'.phot').replace('DRIZZLED', 'IRAF_cats')
+                    coordlist_dir = iraf_cat_dir.replace('.phot', '_coords.coo')    
 
-        if not os.path.exists(coordlist_dir):
-            photfile = ascii.read(iraf_cat_dir).to_pandas().set_index('ID')
-            xycoords = photfile[['XCENTER', 'YCENTER']]
-            xycoords.to_csv(coordlist_dir, sep='\t', index=False, header=False)
-        if DO_APPHOT4:
-            if not pmsstars:
-                target_dir = (im[:-5]+'_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats_drz')
-            else: 
-                target_dir = (im[:-5]+'_pmsstars_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats_drz')    
-        else:
-            if not pmsstars:
-                target_dir = (im[:-5]+'_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats')
+            if not os.path.exists(coordlist_dir):
+                photfile = ascii.read(iraf_cat_dir).to_pandas().set_index('ID')
+                xycoords = photfile[['XCENTER', 'YCENTER']]
+                xycoords.to_csv(coordlist_dir, sep='\t', index=False, header=False)
+            if DO_APPHOT4:
+                if not pms_stars:
+                    target_dir = (im[:-5]+'_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats_drz')
+                else: 
+                    target_dir = (im[:-5]+'_pmsstars_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats_drz')    
             else:
-                target_dir = (im[:-5]+'_pmsstars_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats')
+                if not pms_stars:
+                    target_dir = (im[:-5]+'_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats')
+                else:
+                    target_dir = (im[:-5]+'_pmsstars_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats')
 
-        im_exptime = im[:-5]+'_exptime.fits'
-        iraf_script_nbadpix.write('digiphot.apphot.phot image='+im_crmask+' ')
-        iraf_script_nbadpix.write('coords= '+coordlist_dir+' output='+target_dir)
-        iraf_script_nbadpix.write('salgori=constant skyvalu=0 apertur=3 zmag=99 interac=no verify=no ')
-        iraf_script_nbadpix.write('calgori=none datamin=0 datamax=INDEF ')
-        iraf_script_nbadpix.write('gain=CCDGAIN readnoi=3.05 sigma=1 itime=1')
-        iraf_script_nbadpix.write(5*'\n')
-    iraf_script_nbadpix.close()
+            im_exptime = im[:-5]+'_exptime.fits'
+            iraf_script_nbadpix.write('digiphot.apphot.phot image='+im_crmask+' ')
+            iraf_script_nbadpix.write('coords= '+coordlist_dir+' output='+target_dir)
+            iraf_script_nbadpix.write('salgori=constant skyvalu=0 apertur=3 zmag=99 interac=no verify=no ')
+            iraf_script_nbadpix.write('calgori=none datamin=0 datamax=INDEF ')
+            iraf_script_nbadpix.write('gain=CCDGAIN readnoi=3.05 sigma=1 itime=1')
+            iraf_script_nbadpix.write(5*'\n')
+        iraf_script_nbadpix.close()
 
 
 
