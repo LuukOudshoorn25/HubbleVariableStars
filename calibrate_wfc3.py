@@ -39,14 +39,15 @@ DO_REGRID      = False
 DO_REGRID_PAR  = False
 DO_REGRID4     = False	
 DO_REGRID4_PAR = False
-DO_APPHOT      = False
+DO_APPHOT      = True
 pms_stars      = True
-IRAF_parallel  = False
+recenter       = False
+IRAF_parallel  = True
 DO_GET_NBadPIX = False
 DO_APPHOT4     = False
 write_DS9_reg  = False
-DO_IRAF_DF     = True
-DO_IRAF_NCR_DF = True
+DO_IRAF_DF     = False
+DO_IRAF_NCR_DF = False
 ### Function definitions ###
 def initialize():
     return
@@ -286,7 +287,7 @@ def GetCRMasked_exptime(flist, this_file, folderpath, exptime):
     if os.path.exists(storepath_median):
         medians       = fits.open(storepath_median)[0].data
     if os.path.exists('../stddevs.txt'):
-        stddevs_df = pd.read_csv('../stddevs.txt', delimiter='\t')
+        stddevs_df = pd.read_csv('../stddevs.txt', delimiter='\t')#.iloc[:88]
         stddevs_df.columns = ['folder', 'stddev']
         stddev = float(stddevs_df.groupby('folder').median().loc[folderpath])
     else:
@@ -310,21 +311,20 @@ def GetCRMasked_exptime(flist, this_file, folderpath, exptime):
         stddev4 = np.nanstd(regD[regD<np.nanmedian(regD)])
 
         stddev = np.nanmedian(np.sort(np.array([stddev1, stddev2, stddev3, stddev4]))[:-1])
-    print("Bg stddev: ",stddev*exptime)
+    print("Bg stddev: ",stddev)
     bg_stddev_arr = stddev * medians / np.nanmedian(this_file)
     if not os.path.exists(storepath_median):
         fits.writeto(storepath_median, medians, overwrite=True)
     #fits.writeto(storepath_stddev, bg_stddev_arr, overwrite=True)
     offsets = np.abs(this_file - medians)
-    CRmask = np.where(offsets>9*bg_stddev_arr, True, False)
+    CRmask = np.where(exptime*offsets>9*bg_stddev_arr, True, False)
     this_file_corr = this_file.copy()
     this_file_corr *= exptime
     this_file_corr[CRmask] = -1e10
-
     with open('../stddevs.txt', 'a+') as stddev_list:
-        stddev_list.write(folderpath + '\t'+str(stddev*exptime)+'\n')
+        stddev_list.write(folderpath + '\t'+str(stddev)+'\n')
 
-    return this_file_corr, stddev*exptime, CRmask
+    return this_file_corr, stddev, CRmask
 ### SORT ALL FILES ACCORDING TO FILTER AND EXPOSURE LENGTH ###
 if SORT:
     sort_files()
@@ -604,6 +604,8 @@ if DO_APPHOT:
         coordfile    = 'pms_stars_xy_coords.coo'
     else:
         coordfile    = 'all_stars_xy_coords.coo'
+    if not recenter:
+        coordfile = coordfile.replace('.coo', '_refluuk.coo')
     if not pms_stars:
         drizzled_apphot_flist        = glob('../IRAF_cat*/*/*/*regrid.phot')
         not_done_arr = ([(w[:-5]+'.phot').replace('DRIZZLED', 'IRAF_cats') not in 
@@ -660,11 +662,13 @@ if DO_APPHOT:
                     target_dir = (im[:-5]+'_pmsstars.phot ').replace('DRIZZLED', 'IRAF_cats')
                 else:
                     target_dir = (im[:-5]+'.phot ').replace('DRIZZLED', 'IRAF_cats')
+            centroid_alg = ('centroid' if recenter else 'none')
+
             # Write task per image to do aperture photometry in IRAF
             iraf_script_images.write('digiphot.apphot.phot image='+im_exptime+' ')
             iraf_script_images.write('coords='+coordfile+' output='+target_dir)
             iraf_script_images.write('salgori=mode annulus=4 dannulus=3 apertur=3 zmag='+str(zmag) + ' interac=no verify=no ')
-            iraf_script_images.write('calgori=centroid cbox=3 datamin=0 datamax=INDEF ')
+            iraf_script_images.write('calgori='+centroid_alg +' cbox=3 datamin=0 datamax=INDEF ')
             iraf_script_images.write('gain=CCDGAIN readnoi=3.05 sigma='+str(sigma) + ' itime='+str(hdu.header['EXPTIME']))
             iraf_script_images.write(5*'\n')
             del hdu
