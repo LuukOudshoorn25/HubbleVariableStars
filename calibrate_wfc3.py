@@ -39,14 +39,14 @@ DO_REGRID      = False
 DO_REGRID_PAR  = False
 DO_REGRID4     = False	
 DO_REGRID4_PAR = False
-DO_APPHOT      = True
+DO_APPHOT      = False
 pms_stars      = True
-recenter       = False
+recenter       = True
 IRAF_parallel  = True
 DO_GET_NBadPIX = False
 DO_APPHOT4     = False
 write_DS9_reg  = False
-DO_IRAF_DF     = False
+DO_IRAF_DF     = True
 DO_IRAF_NCR_DF = False
 ### Function definitions ###
 def initialize():
@@ -667,7 +667,7 @@ if DO_APPHOT:
             # Write task per image to do aperture photometry in IRAF
             iraf_script_images.write('digiphot.apphot.phot image='+im_exptime+' ')
             iraf_script_images.write('coords='+coordfile+' output='+target_dir)
-            iraf_script_images.write('salgori=mode annulus=4 dannulus=3 apertur=3 zmag='+str(zmag) + ' interac=no verify=no ')
+            iraf_script_images.write('salgori=mode annulus=6 dannulus=3 apertur=5 zmag='+str(zmag) + ' interac=no verify=no ')
             iraf_script_images.write('calgori='+centroid_alg +' cbox=3 datamin=0 datamax=INDEF ')
             iraf_script_images.write('gain=CCDGAIN readnoi=3.05 sigma='+str(sigma) + ' itime='+str(hdu.header['EXPTIME']))
             iraf_script_images.write(5*'\n')
