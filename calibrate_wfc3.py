@@ -30,7 +30,7 @@ scamp_ex = 'scamp '
 ### PARAMS ###
 SORT           = False
 CREATE_TREE    = False
-DRIZZLE_IMS    = False
+DRIZZLE_IMS    = True
 DRIZZLE_4IMS   = False
 DO_ASTROMETRY  = False
 DO_ASTROMETRY4 = False
@@ -40,13 +40,13 @@ DO_REGRID_PAR  = False
 DO_REGRID4     = False	
 DO_REGRID4_PAR = False
 DO_APPHOT      = False
-pms_stars      = True
-recenter       = True
-IRAF_parallel  = True
+pms_stars      = False
+recenter       = False
+IRAF_parallel  = False
 DO_GET_NBadPIX = False
 DO_APPHOT4     = False
 write_DS9_reg  = False
-DO_IRAF_DF     = True
+DO_IRAF_DF     = False
 DO_IRAF_NCR_DF = False
 ### Function definitions ###
 def initialize():
@@ -353,8 +353,8 @@ if DRIZZLE_IMS:
     for folder in folderlist:
         print('Starting with ', folder)
         ims = glob(folder+'*flt.fits')
-        if len(glob(folder.replace('SORTED', 'DRIZZLED')+'/*_flt_drz_sci*')) == len(ims):
-            continue
+        #if len(glob(folder.replace('SORTED', 'DRIZZLED')+'/*_flt_drz_sci*')) == len(ims):
+        #    continue
         for iter_, im in enumerate(ims):
             root = im.split('/')[-1]
             copyfile(im, './working_dir/'+root)
