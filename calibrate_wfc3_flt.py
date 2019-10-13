@@ -174,6 +174,8 @@ def drizzard():
 
 def multiply_with_PAM_exptime(filepath, PAM_MAP):
     output_filepath =filepath[:-5]+'_pamcorr_exptime.fits' 
+    if os.path.exists(output_filepath):
+        return
     print(filepath)
     #if os.path.exists(output_filepath):
     #    return
@@ -228,11 +230,13 @@ def sort_files():
 
 def GetCRMasked_exptime(flist, this_file_path, folderpath, exptime):
 #flist, this_file_path, folderpath, exptime = this_wfc_ims, im, folder, hdu.header['EXPTIME']
-    storepath_median = folderpath + ('wfc1' if 'wfc1' in this_file_path else 'wfc2') + 'median.fits'  
+    storepath_median = this_file_path.replace('exptime', 'median')
+    print(this_file_path, exptime)
     this_file = fits.open(this_file_path)[1].data / exptime
     offset_file = this_file_path.replace('_pamcorr_exptime.fits', '_offset.fits')
     try:
-        offsets = fits.open(offset_file)[0].data
+        hdu_median = fits.open(storepath_median)
+        medians = hdu_median[1].data
         print('Reading from offset fits')
     except:
         if len(flist)>6:
@@ -248,22 +252,20 @@ def GetCRMasked_exptime(flist, this_file_path, folderpath, exptime):
         too_little = np.where(np.sum(all_frames==0, axis=2)>4, np.nan, 1)
         medians = np.nanmedian(all_frames, axis=2)  * too_little
         del all_frames
-        rmsmapfile = this_file_path.replace('exptime', 'rmsmap')
-        bg_stddev_arr = fits.open(rmsmapfile)[0].data
-        #if not os.path.exists(storepath_median):
-        fits.writeto(storepath_median, medians, overwrite=True)
-
-        offsets = np.abs(this_file - medians)
+        hdu_median = fits.open(this_file_path)
+        hdu_median[1].data = medians
+        hdu_median.writeto(storepath_median, overwrite=True)
+    offsets = np.abs(this_file - medians)
     if not os.path.exists(offset_file):
-        offsets_hdu = fits.open(this_file_path)[1].copy()
+        offsets_hdu = fits.open(this_file_path).copy()
         offsets_hdu.data = offsets
         offsets_hdu.writeto(offset_file, overwrite=True)
     rmsmapfile = this_file_path.replace('exptime', 'rmsmap')
-    bg_stddev_arr = fits.open(rmsmapfile)[0].data
-    CRmask = np.where(offsets>10*bg_stddev_arr, 1, 0)
-    this_file_corr = this_file.copy()
-    this_file_corr[CRmask] = -1
-    return this_file_corr*exptime, np.median(bg_stddev_arr), CRmask
+    bg_stddev_arr = np.median(fits.open(rmsmapfile)[0].data) * medians / np.median(this_file)
+    CRmask = np.where(offsets>20*bg_stddev_arr, -9999999, 0)
+    this_file_corr = (this_file.copy() * exptime) + CRmask
+    this_file_corr = np.clip(this_file_corr, -1,np.inf)
+    return this_file_corr, np.median(bg_stddev_arr), np.clip(np.abs(CRmask), 0, 1)
 
 
 def regrid_worker(input_tuple):
@@ -428,11 +430,12 @@ if DO_APPHOT:
                 this_wfc_ims = glob(folder+'*wfc1_pamcorr_exptime.fits') 
             elif 'wfc2' in im:    
                 this_wfc_ims = glob(folder+'*wfc2_pamcorr_exptime.fits') 
-            hdu[1].data, sigma, CRmask = GetCRMasked_exptime(this_wfc_ims, im, folder, hdu[0].header['EXPTIME'])
-            hdu.writeto(im_crmasked, overwrite=True)
-            CR_hdu = hdu.copy()
-            CR_hdu.data = CRmask.astype(float)
-            CR_hdu.writeto(im_crmask, overwrite=True)
+            if not os.path.exists(im_crmask):
+                hdu[1].data, sigma, CRmask = GetCRMasked_exptime(this_wfc_ims, im, folder, hdu[0].header['EXPTIME'])
+                hdu.writeto(im_crmasked, overwrite=True)
+                CR_hdu = hdu.copy()
+                CR_hdu[1].data = CRmask.astype(float)
+                CR_hdu.writeto(im_crmask, overwrite=True)
 
             # Define magnitude zeropoints...
             zmag  = {'F336W':23.46,'F438W':24.98,'F555W': 25.81, 'F814W': 24.67, 'F656N': 19.92}[hst_filter]-0.1
@@ -445,19 +448,94 @@ if DO_APPHOT:
 #            if pms_stars:
 #                target_dir = (im[:-5]+'_pmsstars.phot ').replace('DRIZZLED', 'IRAF_cats')
 #            else:
-            target_dir = (im[:-5]+'.phot').replace('FLT_exposures', 'IRAF_cats_FLT')
-            centroid_alg = 'centroid'
-            coordfile = im.split('_pamcorr')[0]+'.coordfile'
-            # Write task per image to do aperture photometry in IRAF
-            iraf_script_images.write('digiphot.apphot.phot image='+im_crmasked+'[1] ')
-            iraf_script_images.write('coords='+coordfile+' output='+target_dir + ' ')
-            iraf_script_images.write('salgori=mode annulus=6 dannulus=3 apertur=5 zmag='+str(zmag) + ' interac=no verify=no ')
-            iraf_script_images.write('calgori='+centroid_alg +' cbox=3 datamin=0 datamax=INDEF ')
-            iraf_script_images.write('gain=CCDGAIN readnoi=3.05 sigma='+str(1) + ' itime='+str(hdu.header['EXPTIME']))
-            iraf_script_images.write(5*'\n')
+            write=True
+            if write:
+                target_dir = (im[:-5]+'.phot').replace('FLT_exposures', 'IRAF_cats_FLT')
+                centroid_alg = 'centroid'
+                coordfile = im.split('_pamcorr')[0]+'.coordfile'
+                # Write task per image to do aperture photometry in IRAF
+                if not os.path.exists(target_dir):
+                    iraf_script_images.write('digiphot.apphot.phot image='+im_crmasked+'[1] ')
+                    iraf_script_images.write('coords='+coordfile+' output='+target_dir + ' ')
+                    iraf_script_images.write('salgori=mode annulus=6 dannulus=3 apertur=5 zmag='+str(zmag) + ' interac=no verify=no ')
+                    iraf_script_images.write('calgori='+centroid_alg +' cbox=3 datamin=0 datamax=INDEF ')
+                    iraf_script_images.write('gain=CCDGAIN readnoi=3.05 sigma='+str(1) + ' itime='+str(hdu[0].header['EXPTIME']))
+                    iraf_script_images.write(5*'\n')
             del hdu
         iraf_script_images.close()
     os.chdir('../')
+
+
+
+
+
+if DO_GET_NBadPIX:
+    """Function to get the number of masked pixels inside the annulus IRAF used to do the photometry"""
+    # For each file, read in the IRAF catalogue, use the (x,y) coordinates and write those to a new iraf command file
+    os.chdir('./working_dir')
+    ims = glob('../FLT_exposures/*/*/*drz_sci_regrid.fits')
+    if IRAF_parallel:
+        nsplits=6
+    else:
+        nsplits=1
+    for which_chunk, drizzled_astrom_regrid_flist in enumerate(np.array_split(ims,nsplits)):
+        iraf_script_nbadpix = open('app_phot_script_nbadpix'+str(which_chunk+1)+'.cl', 'w') 
+        for f_count, im in enumerate(drizzled_astrom_regrid_flist): 
+            folder = '/'.join(im.split('/')[:-1])+'/'
+            print(im)
+            splitted_dir = im.split('/')
+            hst_filter   = splitted_dir[2]
+            im_crmask  = im[:-5]+'_crmask.fits'
+            if (hst_filter == 'F110W') or (hst_filter == 'F160W'):
+                continue
+
+            iraf_cat_dir = (im[:-5]+'.phot').replace('DRIZZLED', 'IRAF_cats_FLT')
+                    coordlist_dir = iraf_cat_dir.replace('.phot', '_coords.coo')
+            else:
+                if pms_stars:
+                    iraf_cat_dir = (im[:-5]+'_pmsstars.phot').replace('DRIZZLED', 'IRAF_cats')
+                    coordlist_dir = iraf_cat_dir.replace('.phot', '_pmscoords.coo')
+                else:
+                    iraf_cat_dir = (im[:-5]+'.phot').replace('DRIZZLED', 'IRAF_cats')
+                    coordlist_dir = iraf_cat_dir.replace('.phot', '_coords.coo')    
+
+            if not os.path.exists(coordlist_dir):
+                photfile = ascii.read(iraf_cat_dir).to_pandas().set_index('ID')
+                xycoords = photfile[['XCENTER', 'YCENTER']]
+                xycoords.to_csv(coordlist_dir, sep='\t', index=False, header=False)
+            
+            target_dir = (im[:-5]+'_pmsstars_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats_drz')    
+            else:
+                if not pms_stars:
+                    target_dir = (im[:-5]+'_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats')
+                else:
+                    target_dir = (im[:-5]+'_pmsstars_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats')
+
+            im_exptime = im[:-5]+'_exptime.fits'
+            iraf_script_nbadpix.write('digiphot.apphot.phot image='+im_crmask+' ')
+            iraf_script_nbadpix.write('coords= '+coordlist_dir+' output='+target_dir)
+            iraf_script_nbadpix.write('salgori=constant skyvalu=0 apertur=3 zmag=99 interac=no verify=no ')
+            iraf_script_nbadpix.write('calgori=none datamin=0 datamax=INDEF ')
+            iraf_script_nbadpix.write('gain=CCDGAIN readnoi=3.05 sigma=1 itime=1')
+            iraf_script_nbadpix.write(5*'\n')
+        iraf_script_nbadpix.close()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
