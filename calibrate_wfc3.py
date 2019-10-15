@@ -29,8 +29,8 @@ from reproject import reproject_interp, reproject_exact
 scamp_ex = 'scamp '
 ### PARAMS ###
 SORT           = False
-CREATE_TREE    = True
-DRIZZLE_IMS    = True
+CREATE_TREE    = False
+DRIZZLE_IMS    = False
 DRIZZLE_4IMS   = False
 DO_ASTROMETRY  = False
 DO_ASTROMETRY4 = False
@@ -39,9 +39,9 @@ DO_REGRID      = False
 DO_REGRID_PAR  = False
 DO_REGRID4     = False	
 DO_REGRID4_PAR = False
-DO_APPHOT      = False
-pms_stars      = False
-recenter       = False
+DO_APPHOT      = True
+pms_stars      = True
+recenter       = True
 IRAF_parallel  = False
 DO_GET_NBadPIX = False
 DO_APPHOT4     = False
@@ -300,12 +300,12 @@ def GetCRMasked_exptime(flist, this_file, folderpath, exptime):
     if os.path.exists(storepath_median):
         medians       = fits.open(storepath_median)[0].data
     if os.path.exists('../stddevs.txt'):
-        stddevs_df = pd.read_csv('../stddevs.txt', delimiter='\t')#.iloc[:88]
+        stddevs_df = pd.read_csv('../stddevs.txt', delimiter='\t', header=None)#.iloc[:88]
         stddevs_df.columns = ['folder', 'stddev']
         stddev = float(stddevs_df.groupby('folder').median().loc[folderpath])
-    else:
-        print('Could not find stddevs.txt, now calculating')
-        # Load all data    
+    print('Could not find stddevs.txt, now calculating')
+    # Load all data    
+    if not os.path.exists(storepath_median):
         flist = flist[:14]
         all_frames = np.zeros((*this_file.shape, len(flist)))
         for i,file in enumerate(flist):
@@ -326,11 +326,11 @@ def GetCRMasked_exptime(flist, this_file, folderpath, exptime):
         stddev = np.nanmedian(np.sort(np.array([stddev1, stddev2, stddev3, stddev4]))[:-1])
     print("Bg stddev: ",stddev)
     bg_stddev_arr = stddev * medians / np.nanmedian(this_file)
-    if not os.path.exists(storepath_median):
-        fits.writeto(storepath_median, medians, overwrite=True)
+    #if not os.path.exists(storepath_median):
+    fits.writeto(storepath_median, medians, overwrite=True)
     #fits.writeto(storepath_stddev, bg_stddev_arr, overwrite=True)
     offsets = np.abs(this_file - medians)
-    CRmask = np.where(exptime*offsets>9*bg_stddev_arr, True, False)
+    CRmask = np.where(offsets>12*bg_stddev_arr, True, False)
     this_file_corr = this_file.copy()
     this_file_corr *= exptime
     this_file_corr[CRmask] = -1e10
@@ -363,11 +363,13 @@ if CREATE_TREE:
 ### START DRIZZLING ###
 if DRIZZLE_IMS:
     folderlist = np.sort(glob('./SORTED/*/*/'))
-    for folder in folderlist:
+    for folder in folderlist[12:]:
         if 'F110W' in folder or 'F160W' in folder:
             continue
         print('Starting with ', folder)
         ims = glob(folder+'*flt.fits')
+        if len(ims)==0: 
+            continue
         #if len(glob(folder.replace('SORTED', 'DRIZZLED')+'/*_flt_drz_sci*')) == len(ims):
         #    continue
         for iter_, im in enumerate(ims):
@@ -605,9 +607,9 @@ if DO_APPHOT:
     #create_dir_tree_IRAF()
     os.chdir('./working_dir')
     if DO_APPHOT4:
-        drizzled_astrom_regrid_flist = glob('../MultiDrizzle/*/*/drz_sci*regrid.fits')
+        drizzled_astrom_regrid_flist = glob('../MultiDrizzle/*/*/drz_sci.fits')
     else: 
-        drizzled_astrom_regrid_flist = glob('../DRIZZLED/*/*/*drz_sci_regrid.fits')
+        drizzled_astrom_regrid_flist = glob('../DRIZZLED/*/*/*drz_sci.fits')
     # We want to do aperture photometry on all these files
     # To keep things findable, we will use the same structure as before
     # Since we do not use PyRAF, we need to make a cl script and run that in IRAF using cmd
@@ -649,9 +651,9 @@ if DO_APPHOT:
             im_exptime = im[:-5]+'_exptime.fits'
             im_crmask  = im[:-5]+'_crmask.fits'
             print('Working on file {} from {}'.format(f_count, len(drizzled_astrom_regrid_flist)), end='\r')     
-            if not 0>np.inf:#(os.path.exists(im_exptime) and os.path.exists(im_crmask)):
+            if not (os.path.exists(im_exptime) and os.path.exists(im_crmask)):
                # CR clean
-                flist                    = glob(folder+'*drz_sci_regrid.fits')
+                flist                    = glob(folder+'*drz_sci.fits')
                 hdu.data, sigma, CRmask  = GetCRMasked_exptime(flist, hdu.data, folder, hdu.header['EXPTIME'])
                 hdu.writeto(im_exptime, overwrite=True)
                 # Save CRmask to FITS file
