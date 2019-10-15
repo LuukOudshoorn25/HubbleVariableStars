@@ -123,7 +123,7 @@ def create_dir_tree():
 
 def create_dir_tree_IRAF():
     filterlist=[]
-    flist = glob('./DRIZZLED/*/*/*fl*fits')
+    flist = glob('./DRIZZLED/*/*/*drz_sci.fits')
     for enum, fitsfile in enumerate(flist):
         print("Going through the fits to see unique filters, now at ", enum, " of ", len(flist), end='\r')
         hdul = fits.open(fitsfile)
