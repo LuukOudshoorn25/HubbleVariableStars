@@ -29,7 +29,7 @@ from reproject import reproject_interp, reproject_exact
 scamp_ex = 'scamp '
 ### PARAMS ###
 SORT           = False
-CREATE_TREE    = False
+CREATE_TREE    = True
 DRIZZLE_IMS    = True
 DRIZZLE_4IMS   = False
 DO_ASTROMETRY  = False
@@ -144,47 +144,60 @@ def create_dir_tree_IRAF():
 def drizzard():
     tweakreg.TweakReg('*_flt.fits',
                       enforce_user_order=False,
-                      imagefindcfg={'threshold': 50, 'conv_width': 3.5, 'dqbits': ~4096, 'use_sharp_round':True},
-                      refimage='../template_newheader.fits',
-                      refimagefindcfg={'threshold': 30, 'conv_width': 2.5},
+                      imagefindcfg={'threshold': 20, 'conv_width': 3.5, 'dqbits': ~4096, 'use_sharp_round':True},
+                      refimage='../HST_Guido/30dorf814drz.fits',
+                      refimagefindcfg={'threshold': 10, 'conv_width': 2.5},
                       shiftfile=True,
                       outshifts='shiftfile.txt',
-                      searchrad=500.0,
+                      searchrad=300.0,
                       ylimit=0.6,
                       updatehdr=True,
-                      wcsname='UVIS_FLC',
+                      wcsname='UVIS_FLT',
                       reusename=True,
-                      interactive=False)
-
-    astrodrizzle.AstroDrizzle('*_flt.fits',
-                              output='_drz.fits',
-                              preserve=False,
-                              overwrite=True,
-                              clean=False,
-                              build=False,
-                              context=False,
-                              resetbits=0,
-                              driz_separate=True,
-                              median=False,
-                              blot=False,
-                              driz_cr=False,
-                              final_wcs=True,
-                              skysub=False)
+                      interactive=False,
+                      yoffset = -2000,
+                      xoffset = -500)
+    flt_files = glob('*_flt.fits')
+    for flt_file in flt_files:
+        root = flt_file[:-5][:-4]
+        drz_file = root + '_drz_sci.fits'
+        astrodrizzle.AstroDrizzle(root+'*_flt.fits',
+                                  output=drz_file,
+                                  preserve=False,
+                                  overwrite=True,
+                                  clean=False,
+                                  build=False,
+                                  context=False,
+                                  resetbits=0,
+                                  driz_separate=False,
+                                  median=False,
+                                  blot=False,
+                                  driz_cr=False,
+                                  #driz_cr_corr=True,
+                                  driz_cr_snr = 8,
+                                  driz_cr_grow=1,
+                                  final_wcs=True,
+                                  skysub=False,
+                                  final_refimage='../HST_Guido/30dorf814drz.fits',
+                                  driz_sep_kernel = 'square',
+                                  driz_sep_pixfrac = 1)
 
 def drizzard_multiple():
     tweakreg.TweakReg('*_flt.fits',
                       enforce_user_order=False,
                       imagefindcfg={'threshold': 50, 'conv_width': 3.5, 'dqbits': ~4096, 'use_sharp_round':True},
-                      refimage='../template_newheader.fits',
+                      refimage='../HST_Guido/30dorf814drz.fits',
                       refimagefindcfg={'threshold': 30, 'conv_width': 2.5},
                       shiftfile=True,
                       outshifts='shiftfile.txt',
-                      searchrad=750.0,
+                      searchrad=300.0,
                       ylimit=0.6,
                       updatehdr=True,
                       wcsname='UVIS_FLT',
                       reusename=True,
-                      interactive=False)
+                      interactive=False,
+                      yoffset = -2000,
+                      xoffset = -500)
 
     astrodrizzle.AstroDrizzle('*flt*',
             output='drz.fits',
@@ -351,6 +364,8 @@ if CREATE_TREE:
 if DRIZZLE_IMS:
     folderlist = np.sort(glob('./SORTED/*/*/'))
     for folder in folderlist:
+        if 'F110W' in folder or 'F160W' in folder:
+            continue
         print('Starting with ', folder)
         ims = glob(folder+'*flt.fits')
         #if len(glob(folder.replace('SORTED', 'DRIZZLED')+'/*_flt_drz_sci*')) == len(ims):
@@ -360,14 +375,13 @@ if DRIZZLE_IMS:
             copyfile(im, './working_dir/'+root)
             print("Copied {} out of {}".format(iter_, len(ims)), end='\r')
         os.chdir('./working_dir')
-        print("Moved into working dir")
         drizzard()
+        print("Moved into working dir")
         for im in ims:
             root = im.split('/')[-1]
-            result = root[:-8]+'single_sci.fits'
-            drizzfile = root[:-5]+'_drz_sci.fits'
+            result = root[:-9]+'_drz_sci.fits'
             print(result)
-            copyfile(result, '.'+folder.replace('SORTED', 'DRIZZLED')+drizzfile)
+            copyfile(result, '.'+folder.replace('SORTED', 'DRIZZLED')+result)
         os.chdir('../')
         os.system('rm -rf ./working_dir/*') 
 
