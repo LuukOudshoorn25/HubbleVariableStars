@@ -189,8 +189,8 @@ def multiply_with_PAM_exptime(filepath, PAM_MAP):
 
 def get_xy_coords(filepath):
     # which_wfc = ('wfc1' if 'wfc1' in filepath else 'wfc2')
-    skytopix.rd2xy(filepath+'[sci,1]',coordfile="radec.dat", output = filepath[:-5]+'_wfc2.coordfile')
-    skytopix.rd2xy(filepath+'[sci,2]',coordfile="radec.dat", output = filepath[:-5]+'_wfc1.coordfile')
+    skytopix.rd2xy(filepath+'[sci,1]',coordfile="radec_pms.dat", output = filepath[:-5]+'_wfc2.coordfile')
+    skytopix.rd2xy(filepath+'[sci,2]',coordfile="radec_pms.dat", output = filepath[:-5]+'_wfc1.coordfile')
     return
 
 def sort_files():
@@ -450,8 +450,8 @@ if DO_APPHOT:
 #            else:
             write=True
             if write:
-                target_dir = (im[:-5]+'.phot').replace('FLT_exposures', 'IRAF_cats_FLT')
-                centroid_alg = 'centroid'
+                target_dir = (im[:-5]+'.phot').replace('FLT_exposures', 'IRAF_cats')
+                centroid_alg = 'none'
                 coordfile = im.split('_pamcorr')[0]+'.coordfile'
                 # Write task per image to do aperture photometry in IRAF
                 if not os.path.exists(target_dir):

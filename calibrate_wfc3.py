@@ -303,9 +303,10 @@ def GetCRMasked_exptime(flist, this_file, folderpath, exptime):
         stddevs_df = pd.read_csv('../stddevs.txt', delimiter='\t', header=None)#.iloc[:88]
         stddevs_df.columns = ['folder', 'stddev']
         stddev = float(stddevs_df.groupby('folder').median().loc[folderpath])
-    print('Could not find stddevs.txt, now calculating')
+
     # Load all data    
     if not os.path.exists(storepath_median):
+        print('Could not find stddevs.txt, now calculating')
         flist = flist[:14]
         all_frames = np.zeros((*this_file.shape, len(flist)))
         for i,file in enumerate(flist):
@@ -330,7 +331,7 @@ def GetCRMasked_exptime(flist, this_file, folderpath, exptime):
     fits.writeto(storepath_median, medians, overwrite=True)
     #fits.writeto(storepath_stddev, bg_stddev_arr, overwrite=True)
     offsets = np.abs(this_file - medians)
-    CRmask = np.where(offsets>12*bg_stddev_arr, True, False)
+    CRmask = np.where(offsets>7*bg_stddev_arr, True, False)
     this_file_corr = this_file.copy()
     this_file_corr *= exptime
     this_file_corr[CRmask] = -1e10
@@ -651,7 +652,8 @@ if DO_APPHOT:
             im_exptime = im[:-5]+'_exptime.fits'
             im_crmask  = im[:-5]+'_crmask.fits'
             print('Working on file {} from {}'.format(f_count, len(drizzled_astrom_regrid_flist)), end='\r')     
-            if not (os.path.exists(im_exptime) and os.path.exists(im_crmask)):
+            redo = True
+            if not (os.path.exists(im_exptime) and os.path.exists(im_crmask)) or redo:
                # CR clean
                 flist                    = glob(folder+'*drz_sci.fits')
                 hdu.data, sigma, CRmask  = GetCRMasked_exptime(flist, hdu.data, folder, hdu.header['EXPTIME'])
@@ -684,7 +686,7 @@ if DO_APPHOT:
             iraf_script_images.write('digiphot.apphot.phot image='+im_exptime+' ')
             iraf_script_images.write('coords='+coordfile+' output='+target_dir)
             iraf_script_images.write('salgori=mode annulus=6 dannulus=3 apertur=5 zmag='+str(zmag) + ' interac=no verify=no ')
-            iraf_script_images.write('calgori='+centroid_alg +' cbox=3 datamin=0 datamax=INDEF ')
+            iraf_script_images.write('calgori=none cbox=3 datamin=0 datamax=INDEF ')
             iraf_script_images.write('gain=CCDGAIN readnoi=3.05 sigma='+str(sigma) + ' itime='+str(hdu.header['EXPTIME']))
             iraf_script_images.write(5*'\n')
             del hdu
@@ -760,17 +762,18 @@ if DO_GET_NBadPIX:
 if write_DS9_reg:
     write_ds9_regions()
 
-
+DO_IRAF_DF=True
+DO_IRAF_NCR_DF = False
 if DO_IRAF_DF or DO_IRAF_NCR_DF: 
     """Concatenate all IRAF photometry catalogues into one CSV"""
     """First do this for the photometry catalogues"""
     # Get the filelists for all catalogs
     if not pms_stars:
-        photometry_files  = glob('./IRAF_cats/*/*/*regrid.phot')
-        nbadpix_files = glob('./IRAF_cats/*/*/*regrid_nbadpix.phot')
+        photometry_files  = glob('./IRAF_cats/*/*/*.phot')
+        nbadpix_files = glob('./IRAF_cats/*/*/*_nbadpix.phot')
         output_fnames = ['APP_phot_all_exps.csv', 'NBadpix_all_exps.csv']
     elif pms_stars:
-        photometry_files  = glob('./IRAF_cats/*/*/*regrid_pmsstars.phot')
+        photometry_files  = glob('./IRAF_cats/*/*/*.phot')
         nbadpix_files = glob('./IRAF_cats/*/*/*pmsstars_nbadpix.phot')
         output_fnames = ['APP_phot_all_exps_pmsstars.csv', 'NBadpix_all_exps_pmsstars.csv']
     if DO_IRAF_DF and DO_IRAF_NCR_DF:
