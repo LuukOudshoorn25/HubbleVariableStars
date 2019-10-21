@@ -28,7 +28,7 @@ from reproject import reproject_interp, reproject_exact
 from astropy.wcs import WCS
 from astropy import wcs
 from drizzlepac import skytopix
-
+from drizzlepac import pixtosky
 
 scamp_ex = 'scamp '
 ### PARAMS ###
@@ -189,9 +189,21 @@ def multiply_with_PAM_exptime(filepath, PAM_MAP):
 
 def get_xy_coords(filepath):
     # which_wfc = ('wfc1' if 'wfc1' in filepath else 'wfc2')
-    skytopix.rd2xy(filepath+'[sci,1]',coordfile="radec_pms.dat", output = filepath[:-5]+'_wfc2.coordfile')
-    skytopix.rd2xy(filepath+'[sci,2]',coordfile="radec_pms.dat", output = filepath[:-5]+'_wfc1.coordfile')
+    skytopix.rd2xy(filepath+'[sci,1]',coordfile="radec_pms2.dat", output = filepath[:-5]+'_wfc2.coordfile')
+    skytopix.rd2xy(filepath+'[sci,2]',coordfile="radec_pms2.dat", output = filepath[:-5]+'_wfc1.coordfile')
+    # Do little shift
+    for f in [filepath[:-5]+'_wfc2.coordfile', filepath[:-5]+'_wfc1.coordfile']:
+        df = ascii.read(f).to_pandas()
+        df.iloc[:,0] -=0.23
+        df.iloc[:,0] += 0.179
+        df.to_csv(f, index=None, header=None, sep='\t')
     return
+
+
+def reference)radex2xy():
+    pixtosky.xy2rd('../HST_Guido/30dorf814drz.fits', coordfile='pms_stars_xy_coords.coo', output='radec_pms2.dat')
+
+
 
 def sort_files():
     os.chdir('./FLT_files_shiftcoords/')
@@ -262,13 +274,13 @@ def GetCRMasked_exptime(flist, this_file_path, folderpath, exptime):
         offsets_hdu.writeto(offset_file, overwrite=True)
     rmsmapfile = this_file_path.replace('exptime', 'rmsmap')
     bg_stddev_arr = np.median(fits.open(rmsmapfile)[0].data) * medians / np.median(this_file)
-    CRmask = np.where(offsets>20*bg_stddev_arr, -9999999, 0)
+    CRmask = np.where(offsets>12*bg_stddev_arr, -9999999, 0)
     this_file_corr = (this_file.copy() * exptime) + CRmask
     this_file_corr = np.clip(this_file_corr, -1,np.inf)
     return this_file_corr, np.median(bg_stddev_arr), np.clip(np.abs(CRmask), 0, 1)
 
 
-def regrid_worker(input_tuple):
+def regrid_worker(input_tuple, how='interp'):
     im, refim = input_tuple
     ref_hdu  = fits.open(refim)[1]
     ref_fobj = fits.open(refim.split('_wfc')[0]+'.fits')
@@ -283,9 +295,17 @@ def regrid_worker(input_tuple):
     target_dir = target_dir +root[:-5]+'_regrid.fits'
 
     print("Single exposure read")
-    array, interp = reproject_interp((singleexphdu.data, wcs), ref_wcs, shape_out=singleexphdu.data.shape)
+    if how=='interp':
+        array, interp = reproject_interp((singleexphdu.data, wcs), ref_wcs, shape_out=singleexphdu.data.shape)
+    elif how=='exact':
+        array, interp = reproject_exact((singleexphdu.data, wcs), ref_wcs, shape_out=singleexphdu.data.shape)        
     print("Reprojection done")
-    return array
+    if how='interp':
+        return array/
+    elif how=='exact':
+        output_hdu = ref_hdu.copy()
+        output_hdu.data = array
+        
 
 
 
@@ -399,6 +419,31 @@ os.chdir('../')
 
 
 
+if DO_REGRID_PAR:
+    ims = glob('../FLT_exposures/*/*/*_pamcorr_exptime.fits')    
+    refim = np.sort(glob('../FLT_exposures/F814W/*/*_pamcorr_exptime.fits'))[0]  
+    inputs = zip(ims, len(ims)*[refim])
+    num_cores = 4
+    results = Parallel(n_jobs=num_cores)(delayed(regrid_worker)(i) for i in [w for w in inputs])
+    drizzled_astrom_flist = glob('./DRIZZLED/*/*/*_drz_sci.fits')
+    drizzled_astrom_regrid_flist = glob('./DRIZZLED/*/*/*_drz_sci_regrid.fits')
+    done_arr = [[w[:-5] not in [q[:-12] for q in drizzled_astrom_regrid_flist] for w in drizzled_astrom_flist]]
+    drizzled_astrom_flist = [drizzled_astrom_flist[w] for w in np.where(done_arr)[1]]
+    regrid_t_start = time.time()
+    regrid_n_done = 0
+    N_todo = len(drizzled_astrom_flist)
+    print("To do: ", N_todo)
+    num_cores = 4
+    results = Parallel(n_jobs=num_cores)(delayed(regrid_worker)(i) for i in drizzled_astrom_flist)
+
+
+
+
+
+
+
+
+
 IRAF_parallel=True
 if DO_APPHOT:
     """Correct the FITS files by masking cosmic rays, multiply them by their exposure time 
@@ -450,16 +495,22 @@ if DO_APPHOT:
 #            else:
             write=True
             if write:
-                target_dir = (im[:-5]+'.phot').replace('FLT_exposures', 'IRAF_cats')
+                target_dir = (im[:-5]+'.phot').replace('FLT_exposures', 'IRAF_cats_FLT_pms')
                 centroid_alg = 'none'
                 coordfile = im.split('_pamcorr')[0]+'.coordfile'
+                wcsin='world'
+                if wcsin=='world':
+                    coordfile='../radec_pms2.dat'
                 # Write task per image to do aperture photometry in IRAF
                 if not os.path.exists(target_dir):
                     iraf_script_images.write('digiphot.apphot.phot image='+im_crmasked+'[1] ')
                     iraf_script_images.write('coords='+coordfile+' output='+target_dir + ' ')
-                    iraf_script_images.write('salgori=mode annulus=6 dannulus=3 apertur=5 zmag='+str(zmag) + ' interac=no verify=no ')
+                    iraf_script_images.write('salgori=mode annulus=4 dannulus=3 apertur=3 zmag='+str(zmag) + ' interac=no verify=no ')
                     iraf_script_images.write('calgori='+centroid_alg +' cbox=3 datamin=0 datamax=INDEF ')
-                    iraf_script_images.write('gain=CCDGAIN readnoi=3.05 sigma='+str(1) + ' itime='+str(hdu[0].header['EXPTIME']))
+                    iraf_script_images.write('gain=CCDGAIN readnoi=3.05')
+                    if wcsin=='world': 
+                        iraf_script_images.write('wcsin=world ')
+                    iraf_script_images.write('sigma='+str(1) + ' itime='+str(hdu[0].header['EXPTIME']))
                     iraf_script_images.write(5*'\n')
             del hdu
         iraf_script_images.close()
@@ -504,12 +555,11 @@ if DO_GET_NBadPIX:
                 xycoords = photfile[['XCENTER', 'YCENTER']]
                 xycoords.to_csv(coordlist_dir, sep='\t', index=False, header=False)
             
-            target_dir = (im[:-5]+'_pmsstars_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats_drz')    
             else:
                 if not pms_stars:
-                    target_dir = (im[:-5]+'_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats')
+                    target_dir = (im[:-5]+'_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats_FLT_all')
                 else:
-                    target_dir = (im[:-5]+'_pmsstars_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats')
+                    target_dir = (im[:-5]+'_pmsstars_nbadpix.phot ').replace('DRIZZLED', 'IRAF_cats_FLT_pms')
 
             im_exptime = im[:-5]+'_exptime.fits'
             iraf_script_nbadpix.write('digiphot.apphot.phot image='+im_crmask+' ')
@@ -554,7 +604,7 @@ if DO_IRAF_DF or DO_IRAF_NCR_DF:
     #    nbadpix_files = glob('./IRAF_cats/*/*/*pmsstars_nbadpix.phot')
     #    output_fnames = ['APP_phot_all_exps_pmsstars.csv', 'NBadpix_all_exps_pmsstars.csv']
     os.chdir('./working_dir')
-    photometry_files = glob('../IRAF_cats_FLT/*/*/*.phot')
+    photometry_files = glob('../IRAF_cats_FLT_pms/*/*/*wfc*.phot')
     #if DO_IRAF_DF and DO_IRAF_NCR_DF:
     #    todo = [photometry_files,nbadpix_files]
     #elif DO_IRAF_DF and not DO_IRAF_NCR_DF:
@@ -603,9 +653,9 @@ if DO_IRAF_DF or DO_IRAF_NCR_DF:
                 phot_df[col] = val
             phot_df = phot_df.set_index(['ID', 'Filter', 'T_Start', 'Exp_Length', 'DrizzleType'])
             IRAF_df = pd.concat((IRAF_df, phot_df), axis=0)
-            IRAF_df = IRAF_df[IRAF_df.CERROR!='OffImage']
-        IRAF_df.sort_index().to_csv(output_fnames[which])
-IRAF_df.to_csv('subset_flt_photometry.csv') 
+        IRAF_df = IRAF_df[IRAF_df.CERROR!='OffImage']
+        IRAF_df = IRAF_df[IRAF_df.AREA > 0]
+IRAF_df.to_csv('APP_phot_pms_exps_fltnorecenter.csv') 
 
 
 
