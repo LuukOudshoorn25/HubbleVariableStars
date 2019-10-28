@@ -21,7 +21,7 @@ MAGERR_AUTO
 KRON_RADIUS
 FLAGS
 
-#VECTOR_ASSOC
+VECTOR_ASSOC
 
 #NUMBER                   Running object number                                    
 #EXT_NUMBER               FITS extension number                                    

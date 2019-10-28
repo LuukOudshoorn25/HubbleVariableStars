@@ -84,7 +84,7 @@ CHECKIMAGE_NAME  bg.fits, bgrms.fits, objects.fits     # Filename for the check-
 #--------------------- Memory (change with caution!) -------------------------
  
 MEMORY_OBJSTACK  3000           # number of objects in stack
-MEMORY_PIXSTACK  300000         # number of pixels in stack
+MEMORY_PIXSTACK  5000000         # number of pixels in stack
 MEMORY_BUFSIZE   1024           # number of lines in buffer
  
 #------------------------------- ASSOCiation ---------------------------------
@@ -92,7 +92,7 @@ MEMORY_BUFSIZE   1024           # number of lines in buffer
 ASSOC_NAME       sky.list       # name of the ASCII file to ASSOCiate
 ASSOC_DATA       0              # columns of the data to replicate (0=all)
 ASSOC_PARAMS     2,3            # columns of xpos,ypos[,mag]
-ASSOC_RADIUS     2.5            # cross-matching radius (pixels)
+ASSOC_RADIUS     2              # cross-matching radius (pixels)
 ASSOC_TYPE       NEAREST        # ASSOCiation method: FIRST, NEAREST, MEAN,
                                 # MAG_MEAN, SUM, MAG_SUM, MIN or MAX
 ASSOCSELEC_TYPE  ALL            # ASSOC selection type: ALL, MATCHED or -MATCHED
