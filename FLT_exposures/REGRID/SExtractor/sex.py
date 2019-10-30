@@ -94,6 +94,13 @@ from astropy.io import fits
 from glob import glob
 import os
 from joblib import Parallel, delayed
+###################################################
+## Initial source detection on whitelight image ###
+###################################################
+
+
+sex ../Whitelight_Images/Whitelight_Guido.fits -c ./sexfiles/params.sex -PARAMETERS_NAME ./sexfiles/default.param -FILTER_NAME ./sexfiles/gauss_2.0_5x5.conv -MAGZEROPOINT 23.768 -CATALOG_NAME Whitelight_detections.fits
+
 
 zmag  = {'F336W':23.46,'F438W':24.98,'F555W': 25.81, 'F814W': 24.67, 'F656N': 19.92}
 
@@ -101,17 +108,25 @@ wfc=2
 photometry_frames = np.sort(glob('../SingleFrame_DetRegrid/WFC'+str(wfc)+'/ib*exptime.fits'))
 #detection_frames = np.sort(glob('../SingleFrame_DetRegrid/WFC'+str(wfc)+'/ib*pamcorr_median.fits'))
 force_rerun = True
+from astropy.io import ascii
 
 def run_sex(im):
     detection_file = im.replace('exptime', 'median')
     catname = im.split('_pamcorr')[0] + '_phot.fits'
-    assoc_file = im.replace('_pamcorr_exptime.fits', '.coordfile')#'XYposF814Wframe.coordfile'
+    assoc_file = im.replace('_pamcorr_exptime.fits', '_all.coordfile')#'XYposF814Wframe.coordfile'
+    assoc_df = ascii.read(assoc_file).to_pandas()
+    if len(assoc_df.columns)==2:
+        assoc_df['ID'] = np.arange(1,len(assoc_df)+1)
+        assoc_df[['ID', 'col1', 'col2']].to_csv(assoc_file, sep='\t', header=None, index=None)
     hdul = fits.open(im)
     exptime = hdul[0].header['EXPTIME']
     if not os.path.exists(im.replace('exptime', 'rate')):
         hdul[1].data = hdul[1].data / exptime
         hdul.writeto(im.replace('exptime', 'rate'), overwrite=True)
     filter_ = hdul[0].header['Filter']
+    if not filter_=='F656N':
+        return
+
     mzp = zmag[filter_]
     # Divide by exptime
     #hdul[1].data = hdul[1].data / exptime
