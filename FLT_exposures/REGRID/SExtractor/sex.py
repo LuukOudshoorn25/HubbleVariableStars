@@ -94,18 +94,12 @@ from astropy.io import fits
 from glob import glob
 import os
 from joblib import Parallel, delayed
-###################################################
-## Initial source detection on whitelight image ###
-###################################################
-
-
-sex ../Whitelight_Images/Whitelight_Guido.fits -c ./sexfiles/params.sex -PARAMETERS_NAME ./sexfiles/default.param -FILTER_NAME ./sexfiles/gauss_2.0_5x5.conv -MAGZEROPOINT 23.768 -CATALOG_NAME Whitelight_detections.fits
 
 
 zmag  = {'F336W':23.46,'F438W':24.98,'F555W': 25.81, 'F814W': 24.67, 'F656N': 19.92}
 
-wfc=2
-photometry_frames = np.sort(glob('../SingleFrame_DetRegrid/WFC'+str(wfc)+'/ib*exptime.fits'))
+#wfc=2
+photometry_frames = np.sort(glob('../SingleFrame_DetRegrid/WFC*/ib*exptime.fits'))
 #detection_frames = np.sort(glob('../SingleFrame_DetRegrid/WFC'+str(wfc)+'/ib*pamcorr_median.fits'))
 force_rerun = True
 from astropy.io import ascii
@@ -126,7 +120,7 @@ def run_sex(im):
     filter_ = hdul[0].header['Filter']
     if not filter_=='F656N':
         return
-
+    weight_map = im.replace('exptime', 'weight')
     mzp = zmag[filter_]
     # Divide by exptime
     #hdul[1].data = hdul[1].data / exptime
@@ -141,8 +135,9 @@ def run_sex(im):
     sex_command += ' -MAG_ZEROPOINT ' + str(mzp)
     sex_command += ' -ASSOC_NAME ' + assoc_file
     sex_command += ' -CATALOG_NAME ' + catname
+    sex_command += ' -WEIGHT_IMAGE ' + weight_map
     os.system(sex_command)
-Parallel(n_jobs=6)(delayed(run_sex)(i) for i in photometry_frames)
+Parallel(n_jobs=8)(delayed(run_sex)(i) for i in photometry_frames)
 
 
 
