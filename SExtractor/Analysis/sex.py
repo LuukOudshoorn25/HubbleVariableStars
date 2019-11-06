@@ -13,26 +13,21 @@ from astropy.io import ascii
 
 
 # Get the coordinate files
-from drizzlepac import skytopix
-from drizzlepac import pixtosky
+#from drizzlepac import skytopix
+#from drizzlepac import pixtosky
 
 
 def get_xy_coords(filepath):
-    wfc = str((1 if 'WFC1' in filepath else 2))
-    print(wfc)
-    hdul = fits.open(filepath)
-    filter_ = hdul[0].header['FILTER']
-    exptime = hdul[0].header['EXPTIME']
-    root = filepath.split('WFC'+wfc+'/')[1].split('_wfc')[0]+'.fits'
-    hdul_path = '../../FLT_exposures/'+filter_+'/'+('deep' if exptime>30 else 'short') + '/'+root
-
-    # which_wfc = ('wfc1' if 'wfc1' in filepath else 'wfc2')
-    skytopix.rd2xy(hdul_path+'[sci,'+wfc+']',coordfile="../../radec.dat", output = filepath[:-21]+'_all.coordfile')
-    skytopix.rd2xy(hdul_path+'[sci,'+wfc+']',coordfile="../../radec.dat", output = filepath[:-21]+'_all.coordfile')
-    return
+    outputfile = filepath.replace('_pamcorr_exptime.fits', '_all.coordfile')
+    if os.path.exists(outputfile):
+        print('return')
+        return 
+    ds9_command = "ds9 "+filepath+" -regions load ../../radec.reg -regions system image "
+    ds9_command += '-regions format XY -regions save '+outputfile + ' -exit'
+    os.system(ds9_command)
 
 photometry_frames = np.sort(glob('../SingleFrame_DetRegrid/WFC*/ib*exptime.fits'))
-Parallel(n_jobs=8)(delayed(get_xy_coords)(i) for i in photometry_frames)
+Parallel(n_jobs=6)(delayed(get_xy_coords)(i) for i in photometry_frames)
 
 
 
@@ -47,6 +42,8 @@ force_rerun = True
 
 
 def run_sex(im):
+    if 'ib6wd1sqq' not in im:
+        return
     detection_file = im.replace('exptime', 'median')
     catname = im.split('_pamcorr')[0] + '_phot.fits'
     assoc_file = im.replace('_pamcorr_exptime.fits', '_all.coordfile')
@@ -77,7 +74,7 @@ def run_sex(im):
     sex_command += ' -CATALOG_NAME ' + catname
     sex_command += ' -WEIGHT_IMAGE ' + weight_map
     os.system(sex_command)
-Parallel(n_jobs=8)(delayed(run_sex)(i) for i in photometry_frames)
+a=Parallel(n_jobs=8)(delayed(run_sex)(i) for i in photometry_frames)
 
 
 
