@@ -57,6 +57,7 @@ def run_sex(im):
 #    if filter_ !='F656N':
 #        return
     weight_map = im.replace('exptime', 'weight')
+    rms_map = im.replace('exptime', 'rms')
     #flag_map = im.replace('exptime', 'flag')
 
     mzp = zmag[filter_]
@@ -74,9 +75,10 @@ def run_sex(im):
     sex_command += ' -ASSOC_NAME ' + assoc_file
     sex_command += ' -CATALOG_NAME ' + catname
     sex_command += ' -WEIGHT_IMAGE ' + weight_map+','+weight_map
-#    sex_command += ' -FLAG_IMAGE ' + flag_map
+    #sex_command += ' -CHECKIMAGE_NAME '+rms_map
     os.system(sex_command)
-a=Parallel(n_jobs=8)(delayed(run_sex)(i) for i in photometry_frames)
+
+a=Parallel(n_jobs=4)(delayed(run_sex)(i) for i in photometry_frames)
 
 
 
