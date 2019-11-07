@@ -31,7 +31,7 @@ def worker(im):
     WeightMap = fits.ImageHDU(data=GoodPixels)
     WeightMap.writeto(im.replace('rate', 'weight'), overwrite=True)
 
-    FlagMap = fits.ImageHDU(data=GoodPixels.astype(int))
+    FlagMap = fits.ImageHDU(data=np.array((1-GoodPixels)).astype(np.int16))
     FlagMap.writeto(im.replace('rate', 'flag'), overwrite=True)
 
 Parallel(n_jobs=7)(delayed(worker)(i) for i in images)
