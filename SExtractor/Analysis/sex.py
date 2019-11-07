@@ -35,15 +35,10 @@ Parallel(n_jobs=6)(delayed(get_xy_coords)(i) for i in photometry_frames)
 
 zmag  = {'F336W':23.46,'F438W':24.98,'F555W': 25.81, 'F814W': 24.67, 'F656N': 19.92}
 
-#wfc=2
 photometry_frames = np.sort(glob('../SingleFrame_DetRegrid/WFC*/ib*exptime.fits'))
-#detection_frames = np.sort(glob('../SingleFrame_DetRegrid/WFC'+str(wfc)+'/ib*pamcorr_median.fits'))
 force_rerun = True
 
-
 def run_sex(im):
-    if 'ib6wd1sqq' not in im:
-        return
     detection_file = im.replace('exptime', 'median')
     catname = im.split('_pamcorr')[0] + '_phot.fits'
     assoc_file = im.replace('_pamcorr_exptime.fits', '_all.coordfile')
@@ -53,11 +48,17 @@ def run_sex(im):
         assoc_df[['ID', 'col1', 'col2']].to_csv(assoc_file, sep='\t', header=None, index=None)
     hdul = fits.open(im)
     exptime = hdul[0].header['EXPTIME']
+    if exptime<31:
+        return
     if not os.path.exists(im.replace('exptime', 'rate')):
         hdul[1].data = hdul[1].data / exptime
         hdul.writeto(im.replace('exptime', 'rate'), overwrite=True)
     filter_ = hdul[0].header['Filter']
+#    if filter_ !='F656N':
+#        return
     weight_map = im.replace('exptime', 'weight')
+    #flag_map = im.replace('exptime', 'flag')
+
     mzp = zmag[filter_]
     # Divide by exptime
     #hdul[1].data = hdul[1].data / exptime
@@ -72,7 +73,8 @@ def run_sex(im):
     sex_command += ' -MAG_ZEROPOINT ' + str(mzp)
     sex_command += ' -ASSOC_NAME ' + assoc_file
     sex_command += ' -CATALOG_NAME ' + catname
-    sex_command += ' -WEIGHT_IMAGE ' + weight_map
+    sex_command += ' -WEIGHT_IMAGE ' + weight_map+','+weight_map
+#    sex_command += ' -FLAG_IMAGE ' + flag_map
     os.system(sex_command)
 a=Parallel(n_jobs=8)(delayed(run_sex)(i) for i in photometry_frames)
 
