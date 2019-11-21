@@ -20,8 +20,11 @@ MAGERR_AUTO
 
 KRON_RADIUS
 FLAGS
+FLAGS_WEIGHT
+#NIMAFLAGS_ISO
 
 VECTOR_ASSOC
+BACKGROUND
 
 #NUMBER                   Running object number                                    
 #EXT_NUMBER               FITS extension number                                    
