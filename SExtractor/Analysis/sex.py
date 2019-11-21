@@ -34,7 +34,7 @@ photometry_frames = np.sort(glob('../SingleFrame_DetRegrid/WFC*/ib*exptime.fits'
 force_rerun = True
 
 def run_sex(im):
-    detection_file = im.replace('pamcorr_exptime', 'whitelight_regrid')
+    detection_file = im.replace('pamcorr_exptime', 'whitelight_regrid2')
     catname = im.split('_pamcorr')[0] + '_phot.fits'
     assoc_file = im.replace('_pamcorr_exptime.fits', '_all.coordfile')
     assoc_df = ascii.read(assoc_file).to_pandas()
@@ -119,23 +119,23 @@ for f in flist[:1]:
     rootname = f.split('WFC'+wfc+'/')[1].split('_pamcorr')[0]
     temp_folder = ''.join(f.split('.fits')[:-1])
     outputfile = temp_folder+'/'+rootname+'_whitelight_regrid.fits'
-    if os.path.exists(outputfile):
-        continue
+    #if os.path.exists(outputfile):
+    #    continue
     # Get random number of frames to regrid to this frame
     reference_images = glob('./SingleFrame_DetRegrid/WFC'+wfc+'/*pamcorr_rate.fits')
     filters = [fits.open(w)[0].header['FILTER'] for w in reference_images]
     for filter_ in filters_to_regrid:
         nframes = 8
         to_use = np.where([w==filter_ for w in filters])[0]
-        reference_images_use = np.random.choice([reference_images[w] for w in to_use],nframes)
+        reference_images_use = [reference_images[w] for w in to_use]
         
-        final_image = np.zeros((*fits.open(f)[1].data.shape,nframes))
+        final_image = np.zeros((*fits.open(f)[1].data.shape,len(reference_images_use)))
         #for i,im in enumerate(reference_images_use[:1]):
         #
         #    regrid_arr = return_reproject((im,f))
         #    final_image[:,:,i] = regrid_arr
         inputs = [(f,w) for w in reference_images_use]
-        returns = Parallel(n_jobs=nframes)(delayed(return_reproject)(i) for i in inputs)
+        returns = Parallel(n_jobs=2)(delayed(return_reproject)(i) for i in inputs)
         for i, data in enumerate(returns):
             final_image[:,:,i] = data
         medim_regrid = fits.open(f).copy()
