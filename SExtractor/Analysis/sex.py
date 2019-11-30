@@ -34,10 +34,11 @@ photometry_frames = np.sort(glob('../SingleFrame_DetRegrid/WFC*/ib*exptime.fits'
 force_rerun = True
 
 def run_sex(im):
-    detection_file = im.replace('pamcorr_exptime', 'whitelight_regrid2')
+    detection_file = im.replace('pamcorr_exptime', 'whitelight_regrid')
     catname = im.split('_pamcorr')[0] + '_phot.fits'
     assoc_file = im.replace('_pamcorr_exptime.fits', '_all.coordfile')
     assoc_df = ascii.read(assoc_file).to_pandas()
+
     if len(assoc_df.columns)==2:
         assoc_df['ID'] = np.arange(1,len(assoc_df)+1)
         assoc_df[['ID', 'col1', 'col2']].to_csv(assoc_file, sep='\t', header=None, index=None)
@@ -78,6 +79,94 @@ a=Parallel(n_jobs=6)(delayed(run_sex)(i) for i in photometry_frames)
 
 
 
+##############################################
+## Sex on raw FLT and regridded whitelight ###
+##############################################
+import numpy as np
+from astropy.io import fits
+from glob import glob
+import os
+from joblib import Parallel, delayed
+from astropy.io import ascii
+
+
+
+"""
+
+def get_xy_coords(filepath):
+    outputfile = filepath.replace('_pamcorr_exptime.fits', '_all.coordfile')
+    if os.path.exists(outputfile):
+        print('return')
+        return 
+    ds9_command = "ds9 "+filepath+" -regions load ../../radec.reg -regions system image "
+    ds9_command += '-regions format XY -regions save '+outputfile + ' -exit'
+    os.system(ds9_command)
+
+photometry_frames = np.sort(glob('../SingleFrame_DetRegrid/WFC*/ib*exptime.fits'))
+Parallel(n_jobs=6)(delayed(get_xy_coords)(i) for i in photometry_frames)
+
+"""
+
+
+
+zmag  = {'F336W':23.46,'F438W':24.98,'F555W': 25.81, 'F814W': 24.67, 'F656N': 19.92}
+
+photometry_frames = np.sort(glob('../SingleFrame_DetRegrid/WFC*/ib*exptime.fits'))
+force_rerun = True
+
+def run_sex(im):
+    detection_file = im.replace('pamcorr_exptime', 'whitelight_regrid')
+    catname = im.split('_pamcorr')[0] + '_phot.fits'
+    assoc_file = im.replace('_pamcorr_exptime.fits', '_all.coordfile')
+    assoc_df = ascii.read(assoc_file).to_pandas()
+
+    if len(assoc_df.columns)==2:
+        assoc_df['ID'] = np.arange(1,len(assoc_df)+1)
+        assoc_df[['ID', 'col1', 'col2']].to_csv(assoc_file, sep='\t', header=None, index=None)
+    hdul = fits.open(im)
+    exptime = hdul[0].header['EXPTIME']
+    if exptime<31:
+        return
+    if 'wfc1' in im:
+        exposurefile = im.replace('WFC1', 'WFC1_crcleaned')
+        exposurefile = exposurefile.replace('_flt_wfc1_pamcorr_exptime', '_crclean_wfc1')
+    elif 'wfc2' in im:
+        exposurefile = im.replace('WFC2', 'WFC2_crcleaned')
+        exposurefile = exposurefile.replace('_flt_wfc2_pamcorr_exptime', '_crclean_wfc2')
+    print(exposurefile)
+    hdul = fits.open(exposurefile)
+    if not os.path.exists(exposurefile.replace('_wfc', '_rate_wfc')):
+        hdul[1].data = hdul[1].data / exptime
+        hdul.writeto(exposurefile.replace('_wfc', '_rate_wfc'), overwrite=True)
+    filter_ = hdul[0].header['Filter']
+#    if filter_ !='F555W':
+#        return
+    weight_map = im.replace('exptime', 'weight')
+    rms_map = im.replace('exptime', 'rms')
+    #flag_map = im.replace('exptime', 'flag')
+
+    mzp = zmag[filter_]
+    # Divide by exptime
+    #hdul[1].data = hdul[1].data / exptime
+    #if not os.path.exists(im.replace('exptime', 'rate')):
+    #    hdul.writeto(im.replace('exptime', 'rate'), overwrite=True)
+    if os.path.exists(catname) and not force_rerun:
+        return
+    sex_command = 'sex ' + detection_file+','+exposurefile.replace('_wfc', '_rate_wfc')
+    sex_command += ' -c ./sexfiles/params.sex'
+    sex_command += ' -PARAMETERS_NAME ./sexfiles/default.param'
+    sex_command += ' -FILTER_NAME ./sexfiles/gauss_2.0_5x5.conv'
+    sex_command += ' -MAG_ZEROPOINT ' + str(mzp)
+    sex_command += ' -ASSOC_NAME ' + assoc_file
+    sex_command += ' -CATALOG_NAME ' + catname
+    #sex_command += ' -WEIGHT_IMAGE ' +weight_map
+    #sex_command += ' -CHECKIMAGE_NAME '+rms_map
+    os.system(sex_command)
+
+a=Parallel(n_jobs=6)(delayed(run_sex)(i) for i in photometry_frames)
+
+
+
 
 
 
@@ -114,18 +203,21 @@ def return_reproject(params):
 flist = glob('./SingleFrame_DetRegrid/WFC*/*pamcorr_rate.fits')
 #### Regrid images to this frame ####
 filters_to_regrid = ['F336W', 'F438W', 'F555W', 'F656N']
-for f in flist[:1]:
+for f in flist:
+    print(f)
     wfc = ('1' if 'wfc1' in f else '2')
     rootname = f.split('WFC'+wfc+'/')[1].split('_pamcorr')[0]
     temp_folder = ''.join(f.split('.fits')[:-1])
-    outputfile = temp_folder+'/'+rootname+'_whitelight_regrid.fits'
-    #if os.path.exists(outputfile):
-    #    continue
-    # Get random number of frames to regrid to this frame
+    outputfile = f.replace('_pamcorr_rate.fits', '_whitelight_regrid2.fits')
+    if os.path.exists(outputfile):
+        continue
+    try:
+       os.mkdir(temp_folder)
+    except:
+        pass
     reference_images = glob('./SingleFrame_DetRegrid/WFC'+wfc+'/*pamcorr_rate.fits')
     filters = [fits.open(w)[0].header['FILTER'] for w in reference_images]
     for filter_ in filters_to_regrid:
-        nframes = 8
         to_use = np.where([w==filter_ for w in filters])[0]
         reference_images_use = [reference_images[w] for w in to_use]
         
@@ -135,7 +227,9 @@ for f in flist[:1]:
         #    regrid_arr = return_reproject((im,f))
         #    final_image[:,:,i] = regrid_arr
         inputs = [(f,w) for w in reference_images_use]
-        returns = Parallel(n_jobs=2)(delayed(return_reproject)(i) for i in inputs)
+        if os.path.exists(temp_folder+'/'+filter_+'median.fits'):
+            continue
+        returns = Parallel(n_jobs=4)(delayed(return_reproject)(i) for i in inputs)
         for i, data in enumerate(returns):
             final_image[:,:,i] = data
         medim_regrid = fits.open(f).copy()
