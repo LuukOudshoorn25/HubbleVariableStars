@@ -666,8 +666,131 @@ IRAF_df.to_csv('APP_phot_pms_exps_fltnorecenter.csv')
 
 
 
+flist = glob('./WFC*/*_crclean_wfc*.fits')
+
+def run_iraf(fitsfile, chunk_id):
+    hdu = fits.open(fitsfile)[0]
+    filename = fitsfile[7:]
+    exptime = hdu.header['EXPTIME']
+    filter_ = hdu.header['FILTER']
+    zmag  = {'F336W':23.46,'F438W':24.98,'F555W': 25.81, 'F814W': 24.67, 'F656N': 19.92}[filter_]
+    print(fitsfile)
+    wfc = ('1' if 'wfc1' in fitsfile else '2')
+    coordfile = fitsfile.replace('_crclean_wfc'+wfc+'.fits', '_flt_wfc'+wfc+'_all.coordfile')
+    target_dir = './photfiles/'+filename.replace('.fits', '.phot')
+    centroid_alg = 'none'
+    
+    iraf_script_images = open('irafscript'+chunk_id+'.cl', 'a')
+    iraf_script_images.write('digiphot.apphot.phot image='+fitsfile+'[1] ')
+    iraf_script_images.write('coords='+coordfile+' output='+target_dir + ' ')
+    iraf_script_images.write('salgori=mode annulus=4 dannulus=3 apertur=3 zmag='+str(zmag))
+    iraf_script_images.write(' interac=no verify=no ')
+    iraf_script_images.write('calgori='+centroid_alg +' cbox=3 datamin=0 datamax=INDEF ')
+    iraf_script_images.write('gain=CCDGAIN readnoi=3.05')
+    #if wcsin=='world': 
+    #    iraf_script_images.write('wcsin=world ')
+    iraf_script_images.write(' itime='+str(exptime))
+    iraf_script_images.write(5*'\n')
+    iraf_script_images.close()
 
 
+
+for which_chunk, files in enumerate(np.array_split(flist,6)):
+    for f in files:
+        run_iraf(f, str(which_chunk))
+
+
+# MAKE DF
+flist = glob('./photfiles/crcleaned/*.phot') 
+# See what columns we need to store
+columns = ascii.read(flist[0]).to_pandas().columns
+# Create DF with 5 indexes
+IRAF_df = pd.DataFrame({'ID':[], 'Filter':[], 'T_Start':[],'Exp_Length':[]})
+IRAF_df = IRAF_df.set_index(['ID', 'Filter', 'T_Start', 'Exp_Length'])
+# Add the columns that we fill later
+for col in [w for w in columns if w is not 'ID']:
+    IRAF_df[col] = []
+
+# Loop through all files
+flist = glob('./WFC*/*_crclean_wfc*.fits')
+for f_count, fitsfile in enumerate(flist):
+    hdu = fits.open(fitsfile)[0]
+    filename = fitsfile[7:]
+    exptime = hdu.header['EXPTIME']
+    hst_filter = hdu.header['FILTER']
+    wfc = ('1' if 'wfc1' in fitsfile else '2')
+    exp_length   = ('deep' if exptime>31 else 'short')
+    if exp_length == 'short':
+        continue
+    t_start      = hdu.header['EXPSTART']
+    target_dir = './photfiles/'+filename.replace('.fits', '.phot')
+
+    print('Working on file {} of {}'.format(f_count, len(flist)), end='\r')
+    
+    phot_df = ascii.read(target_dir).to_pandas()
+    for col, val in zip(['Filter', 'T_Start', 'Exp_Length', 'DrizzleType'], [hst_filter, t_start, exp_length]):
+        phot_df[col] = val
+    phot_df = phot_df.set_index(['ID', 'Filter', 'T_Start', 'Exp_Length'])
+    IRAF_df = pd.concat((IRAF_df, phot_df), axis=0)
+IRAF_df = IRAF_df[IRAF_df.CERROR!='OffImage']
+IRAF_df = IRAF_df[IRAF_df.AREA > 0]
+IRAF_df.to_csv('IRAF_output.csv') 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Loop over the photometry files
+for f_count, fitsfile in enumerate(flist):
+    hdu = fits.open(fitsfile)[0]
+    filename = fitsfile[7:]
+    exptime = hdu.header['EXPTIME']
+    hst_filter = hdu.header['FILTER']
+    zmag  = {'F336W':23.46,'F438W':24.98,'F555W': 25.81, 'F814W': 24.67, 'F656N': 19.92}[filter_]
+    wfc = ('1' if 'wfc1' in fitsfile else '2')
+    target_dir = './photfiles/'+filename.replace('.fits', '.phot')
+
+
+    
+
+    # Extract relevant info for the indexing
+    # Due to structure of directories, most info is in the filepath
+    exp_length   = ('deep' if exptime>31 else 'short')
+    fname        = filename
+    # Lookup associated FITS file
+    # Extract info from its header
+    t_start      = hdu.header['EXPSTART']
+
+    print('Working on file {} of {}'.format(f_count, len(apphot_files)), end='\r')
+    # Read in the photometry file
+    phot_df = ascii.read(apphot_file).to_pandas()
+    # Add info to df
+    for col, val in zip(['Filter', 'T_Start', 'Exp_Length', 'DrizzleType'], [hst_filter, t_start, exp_length, drizzle_type]):
+        phot_df[col] = val
+    phot_df = phot_df.set_index(['ID', 'Filter', 'T_Start', 'Exp_Length', 'DrizzleType'])
+    IRAF_df = pd.concat((IRAF_df, phot_df), axis=0)
+IRAF_df = IRAF_df[IRAF_df.CERROR!='OffImage']
+IRAF_df = IRAF_df[IRAF_df.AREA > 0]
+IRAF_df.to_csv('APP_phot_pms_exps_fltnorecenter.csv') 
 
 
 
